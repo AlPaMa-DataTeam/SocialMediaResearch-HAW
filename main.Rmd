@@ -1,0 +1,62 @@
+---
+title: "R Notebook"
+autor: "AlPaMa-DataTeam"
+output: html_notebook
+---
+
+Describtion about the Project
+
+Setup:
+```{r}
+# Packages
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel")
+
+# Function to check installation and install packages
+pkgTest <- function(x)
+{
+  if (!require(x,character.only = TRUE))
+  {
+    install.packages(x,dep=TRUE)
+    if(!require(x,character.only = TRUE)) stop("Package not found")
+  }
+}
+
+# Auto load and install packages
+for (package in packages) {
+  pkgTest(package)
+  library(package, character.only = TRUE)
+}
+
+
+
+```
+
+Data:
+```{r}
+urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
+mainData <- read_csv("data/ParlamentarierBackup.csv")
+# Try to overwrite up latest data
+try(mainData <- read_csv(url(urlfile)))
+# Create Backup
+write_csv(mainData, "data/ParlamentarierBackup.csv")
+
+```
+
+Plots:
+
+## Social Media usage of german political paries in 20??
+```{r}
+
+```
+
+
+## Word Cloud of commonly used hastags of german german political paries in 2021
+```{r}
+
+```
+
+
+## Twitter Usage per state in 2021
+```{r}
+
+```
