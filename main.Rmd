@@ -51,18 +51,17 @@ mainData <- read_csv("data/ParlamentarierBackup.csv")
 try(mainData <- read_csv(url(urlfile)))
 # Create Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
-
+```
+## Tweets 
+```{r}
 # Relevant parliamentarians for Twitter scraping
 twitterUser = mainData %>% 
   filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
   filter(!is.na(SM_Twitter_id)) %>% 
   mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
-```
-## Tweets 
-```{r}
 # Check current rate limits
-#rate_limit(token) # All
+rate_limit(token) # All
 #rate_limit(token, "statuses/user_timeline") # user_timeline
 allTweetsRDS = 'data/tweets.rds'
 if (file.exists(allTweetsRDS)){
@@ -91,7 +90,21 @@ if (file.exists(allTweetsRDS)){
 ```
 ## Data processing
 ```{r}
+twitterUser2 = mainData %>% 
+  filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
+  filter(!is.na(SM_Twitter_user)) %>% 
+  mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
+
+#Test ob User IDs richitg sind. Klappt noch nicht so ganz
+users = twitterList = c(twitterUser$SM_Twitter_user)
+usersByName = lookup_users(users)
+usersByName %>% 
+  select(user_id)
+test = usersByName %>% 
+  full_join(twitterUser)
+  #filter(!is.na(user_id)) %>% 
+  #select(user_id, SM_Twitter_id)
 ```
 Plots:
 
