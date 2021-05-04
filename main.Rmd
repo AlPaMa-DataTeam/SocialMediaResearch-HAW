@@ -7,9 +7,10 @@ output: html_notebook
 Describtion about the Project
 
 Setup:
+
 ```{r}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel")
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet")
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -33,6 +34,9 @@ for (package in packages) {
 
 Data:
 ```{r}
+token <- get_token()
+token
+
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
@@ -40,17 +44,20 @@ try(mainData <- read_csv(url(urlfile)))
 # Create Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 
-mainData = mainData %>% 
-  filter(Kategorie != "EU-Parlament")
+TwitterSearch = mainData %>% 
+  filter(Kategorie != "EU-Parlament") %>% 
+  filter(!is.na(SM_Twitter_id)) %>% 
+  mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
+Tweets <- get_timeline(c(TwitterSearch$SM_Twitter_id), n = 1)
 
-f_tweets2 <- search_tweets("lang:es",
-                         geocode = mexico_coord,
-                         until= "2018-06-29", ## or latest date                            
-                        n = 1000)
-df_tweets2 %>% 
-  group_by(as.Date(created_at)) %>%  ## Group (or set apart) the tweets by date of creation
-  sample_n(100)   ## Obtain 100 random tweets for each group, in this case, for each date.
+#f_tweets2 <- search_tweets("lang:es",
+ #                        geocode = mexico_coord,
+  #                       until= "2018-06-29", ## or latest date                            
+   #                     n = 1000)
+#df_tweets2 %>% 
+ # group_by(as.Date(created_at)) %>%  ## Group (or set apart) the tweets by date of creation
+  #sample_n(100)   ## Obtain 100 random tweets for each group, in this case, for each date.
 
 ## this is a test comment
 ```
