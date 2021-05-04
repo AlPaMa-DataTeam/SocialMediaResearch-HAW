@@ -40,6 +40,18 @@ try(mainData <- read_csv(url(urlfile)))
 # Create Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 
+mainData = mainData %>% 
+  filter(Kategorie != "EU-Parlament")
+
+
+f_tweets2 <- search_tweets("lang:es",
+                         geocode = mexico_coord,
+                         until= "2018-06-29", ## or latest date                            
+                        n = 1000)
+df_tweets2 %>% 
+  group_by(as.Date(created_at)) %>%  ## Group (or set apart) the tweets by date of creation
+  sample_n(100)   ## Obtain 100 random tweets for each group, in this case, for each date.
+
 ```
 
 Plots:
@@ -54,6 +66,7 @@ Plots:
 ```{r}
 
 ```
+
 
 
 ## Twitter Usage per state in 2021
