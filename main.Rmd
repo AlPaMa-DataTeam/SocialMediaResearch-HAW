@@ -52,7 +52,7 @@ df_tweets2 %>%
   group_by(as.Date(created_at)) %>%  ## Group (or set apart) the tweets by date of creation
   sample_n(100)   ## Obtain 100 random tweets for each group, in this case, for each date.
 
-## this is a comment
+## this is a test comment
 ```
 
 Plots:
