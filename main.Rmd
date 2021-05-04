@@ -10,7 +10,7 @@ Setup:
 
 ```{r}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet")
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR")
 
 
 
@@ -35,17 +35,23 @@ for (package in packages) {
 api_key <- "KB9450oyqXW9doi7Hb1HlfIfL"
 api_secret_key <- "2fhDc53TtMMsHtVugsieYIQWP9T46K2wmPcc7GmgyYxqwQhiTT"
 
+## auth with access token
+access_token <- "94161327-dWQWONF3UvNPam1fhV10fXCJnIXXinBSCriliCBfP"
+access_token_secret <- "ZFA0GSjrTDyIfaASbqgK9Hk775bYkXSyHbdJ2LPtlRHmb"
+
 ## authenticate via web browser
 token <- create_token(
   app = "AlPaMa - Twitter Analysis",
   consumer_key = api_key,
-  consumer_secret = api_secret_key)
+  consumer_secret = api_secret_key,
+  access_token = access_token,
+  access_secret = access_token_secret)
 ```
 
 Data:
 ```{r}
-token <- get_token()
-token
+#token <- get_token()
+#token
 
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
@@ -56,31 +62,39 @@ write_csv(mainData, "data/ParlamentarierBackup.csv")
 
 ### Cleaned mainData
 TwitterSearch = mainData %>% 
-  filter(Kategorie != "EU-Parlament") %>% 
+  filter(Kategorie != "EU-Parlament") %>%
+  #filter(Kategorie == "EU-Parlament") %>% 
   filter(!is.na(SM_Twitter_id)) %>% 
   mutate(SM_Twitter_id = as.character(SM_Twitter_id))
+
+
 
 ### Test 2: functional
 # Tweets <- get_timeline(c(TwitterSearch$SM_Twitter_id), n = 20)
 
-### For loop
-n <- length(TwitterSearch$SM_Twitter_id)
-data <- c(list(TwitterSearch$SM_Twitter_id), n)
+#test <- get_timeline("1041644034849103872", n = 5)
 
-for (i in seq_along(data)) {
-  
-  }
-}t
 
+result <- list()
+
+### Test 3: Complete
 twitterList = list(TwitterSearch$SM_Twitter_id)
-for(user in twitterList){
-  test <- get_timeline(user, n = 20)
-  #rl <- rate_limit(token, "statuses/user_timeline")
-  ## if rate limit exhausted, then wait to rate limit reset
-  #if (rl$remaining == 0L) {
-   # Sys.sleep(as.numeric(rl$reset, "secs"))
-  #}
+# rl <- rate_limit(token)
+rl <- rate_limit(token, "statuses/user_timeline")
+for(user in twitterList[[1]]){
+  result[[user]] <- get_timeline(user, n = 100, check = F)
+  print("rate limit remaining:", str(rl$remaining))
+  print("at user:", str(user))
+  rl <- rl %>% 
+    mutate(remaining = remaining - 1)
+  # if rate limit exhausted, then wait to rate limit reset
+  if (rl$remaining == 5L) {
+    rl <- rate_limit(token, "statuses/user_timeline")
+    print("rate limit exceeded, waiting for 900s at user", str(user))
+    Sys.sleep(as.numeric(rl$reset, "secs"))
+  }
 }
+
 
 #f_tweets2 <- search_tweets("lang:es",
  #                        geocode = mexico_coord,
