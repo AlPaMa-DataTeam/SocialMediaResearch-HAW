@@ -12,6 +12,9 @@ Setup:
 # Packages
 packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet")
 
+
+
+
 # Function to check installation and install packages
 pkgTest <- function(x)
 {
@@ -28,8 +31,15 @@ for (package in packages) {
   library(package, character.only = TRUE)
 }
 
+# Twitter access
+api_key <- "KB9450oyqXW9doi7Hb1HlfIfL"
+api_secret_key <- "2fhDc53TtMMsHtVugsieYIQWP9T46K2wmPcc7GmgyYxqwQhiTT"
 
-
+## authenticate via web browser
+token <- create_token(
+  app = "AlPaMa - Twitter Analysis",
+  consumer_key = api_key,
+  consumer_secret = api_secret_key)
 ```
 
 Data:
