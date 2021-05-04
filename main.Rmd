@@ -44,12 +44,33 @@ try(mainData <- read_csv(url(urlfile)))
 # Create Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 
+### Cleaned mainData
 TwitterSearch = mainData %>% 
   filter(Kategorie != "EU-Parlament") %>% 
   filter(!is.na(SM_Twitter_id)) %>% 
   mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
-Tweets <- get_timeline(c(TwitterSearch$SM_Twitter_id), n = 1)
+### Test 2: functional
+# Tweets <- get_timeline(c(TwitterSearch$SM_Twitter_id), n = 20)
+
+### For loop
+n <- length(TwitterSearch$SM_Twitter_id)
+data <- c(list(TwitterSearch$SM_Twitter_id), n)
+
+for (i in seq_along(data)) {
+  
+  }
+}t
+
+twitterList = list(TwitterSearch$SM_Twitter_id)
+for(user in twitterList){
+  test <- get_timeline(user, n = 20)
+  #rl <- rate_limit(token, "statuses/user_timeline")
+  ## if rate limit exhausted, then wait to rate limit reset
+  #if (rl$remaining == 0L) {
+   # Sys.sleep(as.numeric(rl$reset, "secs"))
+  #}
+}
 
 #f_tweets2 <- search_tweets("lang:es",
  #                        geocode = mexico_coord,
