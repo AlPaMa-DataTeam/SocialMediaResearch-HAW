@@ -6,14 +6,10 @@ output: html_notebook
 
 Describtion about the Project
 
-Setup:
-
+# Setup:
 ```{r}
 # Packages
 packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR")
-
-
-
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -26,16 +22,14 @@ pkgTest <- function(x)
 }
 
 # Auto load and install packages
-for (package in packages) {
+invisible(for (package in packages) {
   pkgTest(package)
   library(package, character.only = TRUE)
-}
+})
 
 # Twitter access
 api_key <- "KB9450oyqXW9doi7Hb1HlfIfL"
 api_secret_key <- "2fhDc53TtMMsHtVugsieYIQWP9T46K2wmPcc7GmgyYxqwQhiTT"
-
-## auth with access token
 access_token <- "94161327-dWQWONF3UvNPam1fhV10fXCJnIXXinBSCriliCBfP"
 access_token_secret <- "ZFA0GSjrTDyIfaASbqgK9Hk775bYkXSyHbdJ2LPtlRHmb"
 
@@ -48,65 +42,70 @@ token <- create_token(
   access_secret = access_token_secret)
 ```
 
-Data:
+# Data:
+## Parliamentarians 
 ```{r}
-#token <- get_token()
-#token
-
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
 try(mainData <- read_csv(url(urlfile)))
 # Create Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
-
-### Cleaned mainData
-TwitterSearch = mainData %>% 
-  filter(Kategorie != "EU-Parlament") %>%
-  #filter(Kategorie == "EU-Parlament") %>% 
+```
+## Tweets 
+```{r}
+# Relevant parliamentarians for Twitter scraping
+twitterUser = mainData %>% 
+  filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
   filter(!is.na(SM_Twitter_id)) %>% 
   mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
-
-
-### Test 2: functional
-# Tweets <- get_timeline(c(TwitterSearch$SM_Twitter_id), n = 20)
-
-#test <- get_timeline("1041644034849103872", n = 5)
-
-
-result <- list()
-
-### Test 3: Complete
-twitterList = list(TwitterSearch$SM_Twitter_id)
-# rl <- rate_limit(token)
-rl <- rate_limit(token, "statuses/user_timeline")
-for(user in twitterList[[1]]){
-  result[[user]] <- get_timeline(user, n = 100, check = F)
-  print("rate limit remaining:", str(rl$remaining))
-  print("at user:", str(user))
-  rl <- rl %>% 
-    mutate(remaining = remaining - 1)
-  # if rate limit exhausted, then wait to rate limit reset
-  if (rl$remaining == 5L) {
-    rl <- rate_limit(token, "statuses/user_timeline")
-    print("rate limit exceeded, waiting for 900s at user", str(user))
-    Sys.sleep(as.numeric(rl$reset, "secs"))
+# Check current rate limits
+rate_limit(token) # All
+#rate_limit(token, "statuses/user_timeline") # user_timeline
+allTweetsRDS = 'data/tweets.rds'
+if (file.exists(allTweetsRDS)){
+  allTweets = readRDS(allTweetsRDS)
+} else {
+  result <- list()
+  twitterList = list(twitterUser$SM_Twitter_id)
+  rl <- rate_limit(token, "statuses/user_timeline")
+  for(user in twitterList[[1]]){
+    result[[user]] <- get_timeline(user, n = 100, check = F)
+    print("rate limit remaining:", str(rl$remaining))
+    print("at user:", str(user))
+    # Artifically Counting down the rate limit
+    rl <- rl %>% 
+      mutate(remaining = remaining - 1)
+    # if rate limit exhausted, then wait to rate limit reset
+    if (rl$remaining == 5L) {
+      rl <- rate_limit(token, "statuses/user_timeline")
+      print("rate limit exceeded, waiting for 900s at user", str(user))
+      Sys.sleep(as.numeric(rl$reset, "secs"))
+    }
   }
+  saveRDS(result, file = "data/tweets.rds")
 }
 
-
-#f_tweets2 <- search_tweets("lang:es",
- #                        geocode = mexico_coord,
-  #                       until= "2018-06-29", ## or latest date                            
-   #                     n = 1000)
-#df_tweets2 %>% 
- # group_by(as.Date(created_at)) %>%  ## Group (or set apart) the tweets by date of creation
-  #sample_n(100)   ## Obtain 100 random tweets for each group, in this case, for each date.
-
-## this is a test comment
 ```
+## Data processing
+```{r}
+twitterUser2 = mainData %>% 
+  filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
+  filter(!is.na(SM_Twitter_user)) %>% 
+  mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
+
+#Test ob User IDs richitg sind. Klappt noch nicht so ganz
+users = twitterList = c(twitterUser$SM_Twitter_user)
+usersByName = lookup_users(users)
+usersByName %>% 
+  select(user_id)
+test = usersByName %>% 
+  full_join(twitterUser)
+  #filter(!is.na(user_id)) %>% 
+  #select(user_id, SM_Twitter_id)
+```
 Plots:
 
 ## Social Media usage of german political paries in 20??
