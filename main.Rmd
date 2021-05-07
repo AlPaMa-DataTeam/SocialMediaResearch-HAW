@@ -132,6 +132,32 @@ mainDataLowerNames$match <- ifelse(row.names(mainDataLowerNames) %in% row.names(
 missingData = mainDataLowerNames %>% 
   filter(match == "no")
 
+
+test = mainData %>% 
+  filter(Kategorie != "EU-Parlament") %>%
+  distinct(Kategorie)
+
+mainDataWithState = mainData %>% 
+  mutate(Bundesland, Bundesland = case_when(
+    Kategorie == "Abgeordnetenhaus von Berlin"~"Berlin",
+    Kategorie == "Bayerischer Landtag"~"Bayern",
+    Kategorie == "Bremische Bürgerschaft"~"Bremen",
+    Kategorie == "Hamburgische Bürgerschaft"~"Hamburg",
+    Kategorie == "Hessischer Landtag"~"Hessen",
+    Kategorie == "Landtag Brandenburg"~"Brandenburg",
+    Kategorie == "Landtag des Saarlandes"~"Saarland",
+    Kategorie == "Landtag Mecklenburg-Vorpommern"~"Mecklenburg-Vorpommern",
+    Kategorie == "Landtag Nordrhein-Westfalen"~"Nordrhein-Westfalen",
+    Kategorie == "Landtag Rheinland-Pfalz"~"Rheinland-Pfalz",
+    Kategorie == "Landtag Sachsen-Anhalt"~"Sachsen-Anhalt",
+    Kategorie == "Landtag von Baden-Württemberg"~"Baden-Württemberg",
+    Kategorie == "Niedersächsischer Landtag"~"Niedersachsen",
+    Kategorie == "Sächsischer Landtag"~"Sachsen",
+    Kategorie == "Schleswig-Holsteinischer Landtag"~"Schleswig-Holstein",
+    Kategorie == "Thüringer Landtag"~"Thüringen",
+    Kategorie == "Bundestag"~"Deutschland",
+    TRUE ~ Kategorie))
+
 ```
 Plots:
 
