@@ -9,7 +9,7 @@ Describtion about the Project
 # Setup:
 ```{r}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR")
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr')
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -65,46 +65,73 @@ rate_limit(token) # All
 #rate_limit(token, "statuses/user_timeline") # user_timeline
 allTweetsRDS = 'data/tweets.rds'
 if (file.exists(allTweetsRDS)){
-  allTweets = readRDS(allTweetsRDS)
+  scrapedTweetsPerUser = readRDS(allTweetsRDS)
 } else {
-  result <- list()
-  twitterList = list(twitterUser$SM_Twitter_id)
+  scrapedTweetsPerUser <- list()
+  userList = list(twitterUser$SM_Twitter_user)
   rl <- rate_limit(token, "statuses/user_timeline")
-  for(user in twitterList[[1]]){
-    result[[user]] <- get_timeline(user, n = 100, check = F)
+  for(user in userList[[1]]){
+    scrapedTweetsPerUser[[user]] <- get_timeline(user, n = 100, check = F)
     print("rate limit remaining:", str(rl$remaining))
     print("at user:", str(user))
     # Artifically Counting down the rate limit
     rl <- rl %>% 
       mutate(remaining = remaining - 1)
     # if rate limit exhausted, then wait to rate limit reset
-    if (rl$remaining == 5L) {
+    if (rl$remaining < 5L) {
+      # Get Rate Limits to get time till reset
       rl <- rate_limit(token, "statuses/user_timeline")
       print("rate limit exceeded, waiting for 900s at user", str(user))
       Sys.sleep(as.numeric(rl$reset, "secs"))
+      # Get fresh rate limit info after waiting
+      rl <- rate_limit(token, "statuses/user_timeline")
     }
   }
-  saveRDS(result, file = "data/tweets.rds")
+  saveRDS(scrapedTweetsPerUser, file = "data/tweets.rds")
 }
 
 ```
 ## Data processing
 ```{r}
-twitterUser2 = mainData %>% 
-  filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
-  filter(!is.na(SM_Twitter_user)) %>% 
-  mutate(SM_Twitter_id = as.character(SM_Twitter_id))
+# All scraped Tweets in a tidy Dataframe. Modifications: All screen_name Data is lowercase, Added Column with amount of Tweets per user
+allScrapedTweets = data.table::rbindlist(scrapedTweetsPerUser) %>% 
+  mutate(screen_name = tolower(screen_name)) %>% 
+  group_by(screen_name) %>% 
+  dplyr::mutate(tweetAmount = n())
+
+# Convert every username to lowercase for correct joining
+mainDataLower = mainData %>% 
+  mutate(SM_Twitter_user = tolower(SM_Twitter_user))
+  
+# Joined the dataframes to add all politicans without tweets and set tweetsAmount to 0
+mainDataWithTweets = allScrapedTweets %>% 
+  full_join(mainDataLower, by = c('screen_name'='SM_Twitter_user')) %>% 
+  mutate(tweetAmount = replace_na(tweetAmount, 0))
+
+# Expandet vectors with hashtags to have one hashtag per row (rest of the data got duplicated)
+expandedHashtags = mainDataWithTweets %>% 
+  unnest(hashtags)
+# Amount of tweets per person. Problem with 96 missing entrys (not EU-Parlamentarians)
+tweetAmount = mainDataWithTweets %>% 
+  filter(Kategorie != "EU-Parlament") %>%
+  distinct(Name, .keep_all=TRUE) %>% 
+  select(Name, screen_name, tweetAmount)
 
 
-#Test ob User IDs richitg sind. Klappt noch nicht so ganz
-users = twitterList = c(twitterUser$SM_Twitter_user)
-usersByName = lookup_users(users)
-usersByName %>% 
-  select(user_id)
-test = usersByName %>% 
-  full_join(twitterUser)
-  #filter(!is.na(user_id)) %>% 
-  #select(user_id, SM_Twitter_id)
+# Wenn jmd Lust hat kann man hier rausfinden warum 96 Politiker fehlen. Eigentlich müsste der full_join alle in Tweet Amount eingefügt haben
+mainDataLowerNames = mainDataLower %>% 
+  select(Name)
+  
+tweetAmountNames = tweetAmount %>% 
+  select(Name)
+
+# check for missing rows in two distinct columns
+library(plyr)
+mainDataLowerNames$match <- ifelse(row.names(mainDataLowerNames) %in% row.names(match_df(mainDataLowerNames,tweetAmountNames)),"yes","no")
+
+missingData = mainDataLowerNames %>% 
+  filter(match == "no")
+
 ```
 Plots:
 
