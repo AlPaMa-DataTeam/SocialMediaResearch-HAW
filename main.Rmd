@@ -4,12 +4,12 @@ autor: "AlPaMa-DataTeam"
 output: html_notebook
 ---
 
-Describtion about the Project
+Description about the Project
 
 # Setup:
-```{r}
+```{r, include=FALSE}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr')
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", "purrr", "tidyr", "raster", "leaflet", "sf", "rgeos")
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -44,7 +44,7 @@ token <- create_token(
 
 # Data:
 ## Parliamentarians 
-```{r}
+```{r, include=FALSE}
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
@@ -53,7 +53,7 @@ try(mainData <- read_csv(url(urlfile)))
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 ```
 ## Tweets 
-```{r}
+```{r, include=FALSE}
 # Relevant parliamentarians for Twitter scraping
 twitterUser = mainData %>% 
   filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
@@ -92,8 +92,8 @@ if (file.exists(allTweetsRDS)){
 
 ```
 ## Data processing
-```{r}
-# All scraped Tweets in a tidy Dataframe. Modifications: All screen_name Data is lowercase, Added Column with amount of Tweets per user
+```{r, include=FALSE}
+# All scraped tweets in a tidy dataframe. Modifications: All screen_name Data is lowercase, added column with amount of tweets per user
 allScrapedTweets = data.table::rbindlist(scrapedTweetsPerUser) %>% 
   mutate(screen_name = tolower(screen_name)) %>% 
   group_by(screen_name) %>% 
@@ -103,15 +103,15 @@ allScrapedTweets = data.table::rbindlist(scrapedTweetsPerUser) %>%
 mainDataLower = mainData %>% 
   mutate(SM_Twitter_user = tolower(SM_Twitter_user))
   
-# Joined the dataframes to add all politicans without tweets and set tweetsAmount to 0
+# Joined the dataframes to add all politicians without tweets and set tweetsAmount to 0
 mainDataWithTweets = allScrapedTweets %>% 
   full_join(mainDataLower, by = c('screen_name'='SM_Twitter_user')) %>% 
   mutate(tweetAmount = replace_na(tweetAmount, 0))
 
-# Expandet vectors with hashtags to have one hashtag per row (rest of the data got duplicated)
+# Expanded vectors with hashtags to have one hashtag per row (rest of the data got duplicated)
 expandedHashtags = mainDataWithTweets %>% 
   unnest(hashtags)
-# Amount of tweets per person. Problem with 96 missing entrys (not EU-Parlamentarians)
+# Amount of tweets per person. Problem with 96 missing entries (not EU-Parlamentarians)
 tweetAmount = mainDataWithTweets %>% 
   filter(Kategorie != "EU-Parlament") %>%
   distinct(Name, .keep_all=TRUE) %>% 
@@ -157,7 +157,6 @@ mainDataWithState = mainData %>%
     Kategorie == "Thüringer Landtag"~"Thüringen",
     Kategorie == "Bundestag"~"Deutschland",
     TRUE ~ Kategorie))
-
 ```
 Plots:
 
@@ -166,15 +165,45 @@ Plots:
 
 ```
 
-
-## Word Cloud of commonly used hastags of german german political paries in 2021
+## Word Cloud of commonly used hashtags of german german political paries in 2021
 ```{r}
 
 ```
 
-
-
 ## Twitter Usage per state in 2021
 ```{r}
+
+```
+
+## Map test
+```{r}
+# References:
+# https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
+# https://r-spatial.github.io/mapview/articles/articles/mapview_04-popups.html
+
+
+de_map <- 
+  getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
+  st_as_sf() %>% 
+  left_join(mainDataWithState, by = c("NAME_1" = "Bundesland")) %>% 
+  # select() - waiting for dataframe
+
+
+de_map$randomData <- rnorm(n=nrow(de_map2), 150, 30)
+
+pal <- colorQuantile("Reds", NULL, n = 9)
+popup <- paste0("<strong>Bundesland: </strong>", de_map2$NAME_1, "<br>",
+                "<strong>Random data test: </strong>", round(de_map2$randomData,2))
+
+mapTest <- 
+  leaflet() %>% 
+  addProviderTiles(providers$CartoDB.Voyager) %>% 
+  setView(lng = 10.4507147, lat = 50.9833118, zoom = 6) %>% 
+  addPolygons(data = de_map, 
+              fillColor= ~pal(randomData),
+              fillOpacity = 0.4, 
+              weight = 2, 
+              color = "white",
+              popup = polygon_popup)
 
 ```
