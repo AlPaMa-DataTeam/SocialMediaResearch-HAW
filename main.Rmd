@@ -125,7 +125,7 @@ mainDataLowerNames = mainDataLower %>%
 tweetAmountNames = tweetAmount %>% 
   dplyr::select(Name)
 
-mainDataWithState = mainDataWithTweets %>% 
+mainDataWithState = expandedHashtags %>% 
   mutate(Kategorie, Bundesland = case_when(
     Kategorie == "Abgeordnetenhaus von Berlin"~"Berlin",
     Kategorie == "Bayerischer Landtag"~"Bayern",
@@ -146,12 +146,14 @@ mainDataWithState = mainDataWithTweets %>%
     Kategorie == "Bundestag"~"Deutschland",
     TRUE ~ Kategorie))
 
-topHashtags = expandedHashtags %>% 
-  dplyr::select(Partei, hashtags) %>% 
+topHashtags = mainDataWithState %>% 
+  mutate(hashtags = tolower(hashtags)) %>% 
+  dplyr::select(Partei, hashtags, Bundesland) %>% 
   filter(!is.na(hashtags)) %>% 
   group_by(Partei, hashtags) %>%
   mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU",
+    Partei == "CSU"~"CDU/CSU",
+    Partei == "CDU"~"CDU/CSU",
     Partei == "FDP/DVP"~"FDP",
     Partei == "FW"~"Andere",
     Partei == "fraktionslos"~"Andere",
@@ -172,7 +174,8 @@ Plots:
 tweetTimelineData = mainDataWithTweets %>% 
   filter(created_at.x > as.POSIXct("2021-01-01")) %>% 
     mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU",
+    Partei == "CSU"~"CDU/CSU",
+    Partei == "CDU"~"CDU/CSU",
     Partei == "FDP/DVP"~"FDP",
     Partei == "FW"~"Andere",
     Partei == "fraktionslos"~"Andere",
@@ -182,7 +185,7 @@ tweetTimelineData = mainDataWithTweets %>%
     TRUE ~ Partei
   ))
 partei_farben = c(
-    "CDU" = "black",
+    "CDU/CSU" = "black",
     "SPD" = "#E30013",
     "FDP" = "#FFDD00",
     "LINKE" = "#BD3075",
@@ -210,7 +213,7 @@ ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtag
   geom_text_wordcloud_area(area_corr = TRUE)+
   scale_size_area(max_size = 20) +
   theme_minimal()+
-  scale_color_gradient(low = "black", high = "darkblue")+
+  scale_color_gradient(low = "black", high = "lightblue")+
   labs(
     title = "Die 50 meist verwendeten Hashtags",
     subtitle = "Der aktivsten User zum Thema Super League"
@@ -228,7 +231,8 @@ ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtag
 mapData = mainDataWithState %>% 
   group_by(Bundesland) %>%
   mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU",
+    Partei == "CSU"~"CDU/CSU",
+    Partei == "CDU"~"CDU/CSU",
     Partei == "FDP/DVP"~"FDP",
     Partei == "FW"~"Andere",
     Partei == "fraktionslos"~"Andere",
@@ -241,15 +245,52 @@ mapData = mainDataWithState %>%
   distinct(Bundesland, .keep_all=TRUE) %>% 
   filter(Bundesland != "Deutschland") %>% 
   filter(Bundesland != "EU-Parlament")
+
+top3Hashtags = topHashtags %>% 
+  group_by(Bundesland, Partei) %>% 
+  slice_max(order_by = no_hashtags, n = 3)
+
+nestedHashtags = top3Hashtags %>% 
+  dplyr::select(Partei, Bundesland, hashtags) %>% 
+  group_by(Partei, Bundesland) %>%
+  nest() %>% 
+  group_by(Bundesland) %>% 
+  nest()
+
 de_map <- 
   getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
   st_as_sf() %>% 
-  left_join(mapData, by = c("NAME_1" = "Bundesland"))
+  left_join(mapData, by = c("NAME_1" = "Bundesland")) %>% 
+  left_join(nestedHashtags, by = c("NAME_1" = "Bundesland"))
   # dplyr::select() - waiting for dataframe
 
+
 pal <- colorQuantile("Reds", NULL, n = 9)
+#automatisierung
+popup <- for(bla in de_map[[12]]){
+              paste("<strong>",bla[[1]],"</strong>",)
+                  for(Partei in bla[[2]]){
+                    paste("#",Partei[[1]])
+                  }
+                })
+#automatisierung + paste
 popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
-                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets)
+                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets, "<br>",
+                for(bla in de_map[[12]]){
+                  paste("<strong>",bla[[1]],"</strong>",)
+                  for(Partei in bla[[2]]){
+                    paste("#",Partei[[1]])
+                  }
+                })
+# Hard coded Version                
+test <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
+                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets, "<br>",                
+                "<strong>CDU</strong>", de_map, "<br>",
+                "<strong>SPD</strong>", de_map$, "<br>",
+                "<strong>Grüne</strong>", de_map$no_tweets, "<br>",
+                "<strong></strong>", de_map$no_tweets, "<br>",
+                "<strong>AfD</strong>", de_map$no_tweets, "<br>",
+                "<strong>Partei F </strong>", de_map$no_tweets, "<br>")
 
 mapTest <- 
   leaflet() %>% 
@@ -273,7 +314,7 @@ missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>%
   dplyr::select(-User) %>% 
   mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
 
-ggplot(missingTwitterUsers, aes(x="", y=missingTwitterUsers$missing, fill=missingTwitterUsers$missing)) +
+ggplot(missingTwitterUsers, aes(x="", y=missing, fill=missing)) +
   geom_bar(stat="identity", width=1) +
   coord_polar("y", start=0)
 
@@ -285,7 +326,8 @@ stackedBarData = mainData %>%
   mutate(missing = replace_na(missing, "Kein Account")) %>% 
   dplyr::select(Name, Partei, missing) %>%
   mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU",
+    Partei == "CSU"~"CDU/CSU",
+    Partei == "CDU"~"CDU/CSU",
     Partei == "FDP/DVP"~"FDP",
     Partei == "FW"~"Andere",
     Partei == "fraktionslos"~"Andere",
