@@ -94,11 +94,10 @@ if (file.exists(allTweetsRDS)){
 ## Data processing
 ```{r, include=FALSE}
 # All scraped tweets in a tidy dataframe. Modifications: All screen_name Data is lowercase, added column with amount of tweets per user
-allScrapedTweets = data.table::rbindlist(scrapedTweetsPerUser) %>% 
+allScrapedTweets = bind_rows(scrapedTweetsPerUser) %>% 
   mutate(screen_name = tolower(screen_name)) %>% 
   group_by(screen_name) %>% 
   dplyr::mutate(tweetAmount = n())
-
 
 # Convert every username to lowercase for correct joining
 mainDataLower = mainData %>% 
@@ -116,18 +115,18 @@ expandedHashtags = mainDataWithTweets %>%
 tweetAmount = mainDataWithTweets %>% 
   filter(Kategorie != "EU-Parlament") %>%
   distinct(Name, .keep_all=TRUE) %>% 
-  select(Name, screen_name, tweetAmount)
+  dplyr::select(Name, screen_name, tweetAmount)
 
 
 # Wenn jmd Lust hat kann man hier rausfinden warum 96 Politiker fehlen. Eigentlich müsste der full_join alle in Tweet Amount eingefügt haben
 mainDataLowerNames = mainDataLower %>% 
-  select(Name)
+  dplyr::select(Name)
   
 tweetAmountNames = tweetAmount %>% 
-  select(Name)
+  dplyr::select(Name)
 
-mainDataWithState = mainData %>% 
-  mutate(Bundesland, Bundesland = case_when(
+mainDataWithState = mainDataWithTweets %>% 
+  mutate(Kategorie, Bundesland = case_when(
     Kategorie == "Abgeordnetenhaus von Berlin"~"Berlin",
     Kategorie == "Bayerischer Landtag"~"Bayern",
     Kategorie == "Bremische Bürgerschaft"~"Bremen",
@@ -148,7 +147,7 @@ mainDataWithState = mainData %>%
     TRUE ~ Kategorie))
 
 topHashtags = expandedHashtags %>% 
-  select(Partei, hashtags) %>% 
+  dplyr::select(Partei, hashtags) %>% 
   filter(!is.na(hashtags)) %>% 
   group_by(Partei, hashtags) %>%
   mutate(Partei, Partei = case_when(
@@ -226,29 +225,83 @@ ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtag
 # https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
 # https://r-spatial.github.io/mapview/articles/articles/mapview_04-popups.html
 
-
+mapData = mainDataWithState %>% 
+  group_by(Bundesland) %>%
+  mutate(Partei, Partei = case_when(
+    Partei == "CSU"~"CDU",
+    Partei == "FDP/DVP"~"FDP",
+    Partei == "FW"~"Andere",
+    Partei == "fraktionslos"~"Andere",
+    TRUE ~ Partei
+  )) %>% 
+  dplyr::mutate(
+    no_tweets = n()
+  ) %>%
+  dplyr::select(Bundesland, no_tweets) %>% 
+  distinct(Bundesland, .keep_all=TRUE) %>% 
+  filter(Bundesland != "Deutschland") %>% 
+  filter(Bundesland != "EU-Parlament")
 de_map <- 
   getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
   st_as_sf() %>% 
-  left_join(mainDataWithState, by = c("NAME_1" = "Bundesland"))
-  # select() - waiting for dataframe
-
-
-de_map$randomData <- rnorm(n=nrow(de_map), 150, 30)
+  left_join(mapData, by = c("NAME_1" = "Bundesland"))
+  # dplyr::select() - waiting for dataframe
 
 pal <- colorQuantile("Reds", NULL, n = 9)
 popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
-                "<strong>Random data test: </strong>", round(de_map$randomData,2))
+                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets)
 
 mapTest <- 
   leaflet() %>% 
   addProviderTiles(providers$CartoDB.Voyager) %>% 
   setView(lng = 10.4507147, lat = 50.9833118, zoom = 6) %>% 
   addPolygons(data = de_map, 
-              fillColor= ~pal(randomData),
+              fillColor= ~pal(no_tweets),
               fillOpacity = 0.4, 
               weight = 2, 
               color = "white",
               popup = popup)
 
+mapTest
 ```
+
+## Pie Chart
+```{r}
+missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
+  mutate(tweets = map_int(User, nrow)) %>% 
+  mutate(usernames = names(scrapedTweetsPerUser)) %>% 
+  dplyr::select(-User) %>% 
+  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
+
+ggplot(missingTwitterUsers, aes(x="", y=missingTwitterUsers$missing, fill=missingTwitterUsers$missing)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0)
+
+```
+```{r}
+stackedBarData = mainData %>% 
+  left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
+  filter(Kategorie != "EU-Parlament") %>% 
+  mutate(missing = replace_na(missing, "Kein Account")) %>% 
+  dplyr::select(Name, Partei, missing) %>%
+  mutate(Partei, Partei = case_when(
+    Partei == "CSU"~"CDU",
+    Partei == "FDP/DVP"~"FDP",
+    Partei == "FW"~"Andere",
+    Partei == "fraktionslos"~"Andere",
+    Partei == "SSW"~"Andere",
+    Partei == "BIW"~"Andere",
+    Partei == "BVB/FW"~"Andere",
+    TRUE ~ Partei
+  )) %>% 
+  group_by(Partei) %>%
+  dplyr::mutate(
+    count = 1
+  )
+options(scipen = 999)
+ggplot(stackedBarData, aes(fill=missing, y=count, x=Partei))  +  # Idee: x=reorder(partei, -missing)
+    geom_bar(position="stack", stat="identity")
+```
+
+
+
