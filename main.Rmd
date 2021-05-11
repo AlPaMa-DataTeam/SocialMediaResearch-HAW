@@ -71,7 +71,7 @@ if (file.exists(allTweetsRDS)){
   userList = list(twitterUser$SM_Twitter_user)
   rl <- rate_limit(token, "statuses/user_timeline")
   for(user in userList[[1]]){
-    scrapedTweetsPerUser[[user]] <- get_timeline(user, n = 100, check = F)
+    scrapedTweetsPerUser[[user]] <- get_timeline(user, n = 1500, check = F)
     print("rate limit remaining:", str(rl$remaining))
     print("at user:", str(user))
     # Artifically Counting down the rate limit
@@ -99,6 +99,7 @@ allScrapedTweets = data.table::rbindlist(scrapedTweetsPerUser) %>%
   group_by(screen_name) %>% 
   dplyr::mutate(tweetAmount = n())
 
+
 # Convert every username to lowercase for correct joining
 mainDataLower = mainData %>% 
   mutate(SM_Twitter_user = tolower(SM_Twitter_user))
@@ -124,18 +125,6 @@ mainDataLowerNames = mainDataLower %>%
   
 tweetAmountNames = tweetAmount %>% 
   select(Name)
-
-# check for missing rows in two distinct columns
-library(plyr)
-mainDataLowerNames$match <- ifelse(row.names(mainDataLowerNames) %in% row.names(match_df(mainDataLowerNames,tweetAmountNames)),"yes","no")
-
-missingData = mainDataLowerNames %>% 
-  filter(match == "no")
-
-
-test = mainData %>% 
-  filter(Kategorie != "EU-Parlament") %>%
-  distinct(Kategorie)
 
 mainDataWithState = mainData %>% 
   mutate(Bundesland, Bundesland = case_when(
@@ -175,7 +164,49 @@ topHashtags = expandedHashtags %>%
   distinct(Partei, hashtags, no_hashtags, .keep_all = TRUE) %>%
   filter(no_hashtags > 20)
   
-top_hashtags = readRDS('data/Top_Hashtags.rds')
+
+```
+Plots:
+
+## Social Media usage of german political paries in 2021
+```{r}
+tweetTimelineData = mainDataWithTweets %>% 
+  filter(created_at.x > as.POSIXct("2021-01-01")) %>% 
+    mutate(Partei, Partei = case_when(
+    Partei == "CSU"~"CDU",
+    Partei == "FDP/DVP"~"FDP",
+    Partei == "FW"~"Andere",
+    Partei == "fraktionslos"~"Andere",
+    Partei == "SSW"~"Andere",
+    Partei == "BIW"~"Andere",
+    Partei == "BVB/FW"~"Andere",
+    TRUE ~ Partei
+  ))
+partei_farben = c(
+    "CDU" = "black",
+    "SPD" = "#E30013",
+    "FDP" = "#FFDD00",
+    "LINKE" = "#BD3075",
+    "GRÜNE" = "#19A229",
+    "AfD" = "#009FE1",
+    "Andere" = "grey"
+)
+
+ggplot(tweetTimelineData)+
+  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack")+ 
+  scale_x_datetime(date_breaks = "1 month")+ # Anpassen um die Zeitangabe richtig anzuzeigen
+  scale_color_manual(values = partei_farben)+
+  labs(
+    title = "Tweetsvorkommen der Politiker",
+    subtitle = "Zeitverlauf 2021",
+    x = "Zeit",
+    y = "Anzahl Tweets",
+    color = "Retweet"
+  )
+```
+
+## Word Cloud of commonly used hashtags of german german political paries in 2021
+```{r}
 ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtags))+
   geom_text_wordcloud_area(area_corr = TRUE)+
   scale_size_area(max_size = 20) +
@@ -186,121 +217,10 @@ ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtag
     subtitle = "Der aktivsten User zum Thema Super League"
   )+
   facet_wrap(~Partei)
-```
-Plots:
-
-## Social Media usage of german political paries in 20??
-```{r}
-### Libraries ###
-library(rtweet)
-library(dplyr)
-library(ggplot2)
-library(ggwordcloud)
-library(tidyr)
-
-### Twitter-Token ###
-token <- get_token()
-token
-
-### Top User ###
-
-SuperLeague <- search_tweets("superleague", n = 2000)
-
-User <- SuperLeague %>%
-  mutate(
-    no_of_tweets = 1
-  ) %>% 
-  select(user_id)
-
-User <- User %>% 
-  group_by(user_id) %>%
-  mutate(
-    tweets_per_user = n()
-  )
-
-User <- User %>% 
-  group_by(user_id, tweets_per_user) %>% 
-  summarise() %>% 
-  arrange(desc(tweets_per_user), .by_group = FALSE)
-
-User2 <- User %>%
-  ungroup(user_id) %>% 
-  slice(1:100) %>% 
-  saveRDS("data/Top_User")
-
-User2 <- readRDS("data/Top_User")
-
-### Timeline ###
-UserTL <- get_timelines(User2$user_id, n = 1000, token = token, retryonratelimit = T)
-
-#UserTL <- UserTL %>% 
-#  saveRDS("data/Timelines")
-
-UserTL <- readRDS("data/Timelines")
-
-### Hashtags ###
-
-hashtag <- UserTL[,"hashtags", with = FALSE] %>% 
-  filter(hashtags != "NA") %>% 
-  unnest(cols = c(hashtags)) %>%
-  group_by(hashtags) %>% 
-  mutate(
-    no_hashtags = n()
-  )
-
-top_hashtags <- hashtag %>%
-  group_by(hashtags, no_hashtags) %>% 
-  summarise() %>% 
-  arrange(desc(no_hashtags), .by_group = FALSE) %>%
-  ungroup(hashtags) %>% 
-  slice(1:50)
-
-#top_hashtags <- top_hashtags %>% saveRDS("data/Top_Hashtags")
-#top_hashtags <- readRDS("data/Top_Hashtags")
-  
-### Plot 1 ###
-
-ggplot(SuperLeague)+
-  geom_freqpoly(aes(created_at, color = is_retweet), position = "stack", bins = 222)+ #Zeitspanne 18.5h * 60 / 5 = 222
-  scale_x_datetime(date_breaks = "4 hours")+
-  labs(
-    title = "Tweetsvorkommen zur Super League",
-    subtitle = "Zeitverlauf 05./06. Mai",
-    x = "Zeit",
-    y = "Anzahl Tweets",
-    color = "Retweet"
-    
-  )
-
-
-### Plot 2 ###
-
-ggplot(UserTL)+
-  geom_freqpoly(aes(created_at, color = is_retweet), position = "stack")+
-  labs(
-    title = "Timeline der aktivsten Nutzer",
-    subtitle = "Die letzten 1000 Tweets der Nutzer",
-    x = "Zeit",
-    y = "Anzahl Tweets",
-    color = "Retweet"
-    
-  )
-
-### Plot 3 ###
 
 ```
 
-## Word Cloud of commonly used hashtags of german german political paries in 2021
-```{r}
-
-```
-
-## Twitter Usage per state in 2021
-```{r}
-
-```
-
-## Map test
+## Twitter Usage per state in 2021 (Map test)
 ```{r}
 # References:
 # https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
@@ -310,15 +230,15 @@ ggplot(UserTL)+
 de_map <- 
   getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
   st_as_sf() %>% 
-  left_join(mainDataWithState, by = c("NAME_1" = "Bundesland")) %>% 
+  left_join(mainDataWithState, by = c("NAME_1" = "Bundesland"))
   # select() - waiting for dataframe
 
 
-de_map$randomData <- rnorm(n=nrow(de_map2), 150, 30)
+de_map$randomData <- rnorm(n=nrow(de_map), 150, 30)
 
 pal <- colorQuantile("Reds", NULL, n = 9)
-popup <- paste0("<strong>Bundesland: </strong>", de_map2$NAME_1, "<br>",
-                "<strong>Random data test: </strong>", round(de_map2$randomData,2))
+popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
+                "<strong>Random data test: </strong>", round(de_map$randomData,2))
 
 mapTest <- 
   leaflet() %>% 
@@ -329,6 +249,6 @@ mapTest <-
               fillOpacity = 0.4, 
               weight = 2, 
               color = "white",
-              popup = polygon_popup)
+              popup = popup)
 
 ```
