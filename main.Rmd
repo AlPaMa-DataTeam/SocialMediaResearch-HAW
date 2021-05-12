@@ -67,7 +67,7 @@ allTweetsRDS = 'data/tweets.rds'
 if (file.exists(allTweetsRDS)){
   scrapedTweetsPerUser = readRDS(allTweetsRDS)
 } else {
-  scrapedTweetsPerUser <- list()
+  #scrapedTweetsPerUser <- list()
   userList = list(twitterUser$SM_Twitter_user)
   rl <- rate_limit(token, "statuses/user_timeline")
   for(user in userList[[1]]){
@@ -76,20 +76,27 @@ if (file.exists(allTweetsRDS)){
     print("at user:", str(user))
     # Artifically Counting down the rate limit
     rl <- rl %>% 
-      mutate(remaining = remaining - 1)
+      mutate(remaining = remaining - 8) # - aufrunden(len(lastEntry)/200,0)+1
     # if rate limit exhausted, then wait to rate limit reset
-    if (rl$remaining < 5L) {
+    if (rl$remaining < 10L) {
       # Get Rate Limits to get time till reset
       rl <- rate_limit(token, "statuses/user_timeline")
-      print("rate limit exceeded, waiting for 900s at user", str(user))
-      Sys.sleep(as.numeric(rl$reset, "secs"))
+      if (rl$remaining < 10L) {
+        print("rate limit exceeded, waiting for rest rate limit"-)
+        Sys.sleep(as.numeric(rl$reset, "secs"))
+      }
       # Get fresh rate limit info after waiting
       rl <- rate_limit(token, "statuses/user_timeline")
     }
   }
   saveRDS(scrapedTweetsPerUser, file = "data/tweets.rds")
 }
-
+missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
+  mutate(tweets = map_int(User, nrow)) %>% 
+  mutate(usernames = names(scrapedTweetsPerUser)) %>% 
+  dplyr::select(-User) %>% 
+  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
+twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$usernames))
 ```
 ## Data processing
 ```{r, include=FALSE}
