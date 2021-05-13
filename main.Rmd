@@ -2,6 +2,7 @@
 title: "R Notebook"
 autor: "AlPaMa-DataTeam"
 output: html_notebook
+
 ---
 
 Description about the Project
@@ -67,30 +68,32 @@ allTweetsRDS = 'data/tweets.rds'
 if (file.exists(allTweetsRDS)){
   scrapedTweetsPerUser = readRDS(allTweetsRDS)
 } else {
-  #scrapedTweetsPerUser <- list()
+  scrapedTweetsPerUser <- list()
+  maxTweets = 1500
   userList = list(twitterUser$SM_Twitter_user)
   rl <- rate_limit(token, "statuses/user_timeline")
   for(user in userList[[1]]){
-    scrapedTweetsPerUser[[user]] <- get_timeline(user, n = 1500, check = F)
-    print("rate limit remaining:", str(rl$remaining))
-    print("at user:", str(user))
-    # Artifically Counting down the rate limit
+    scrapedTweetsPerUser[[user]] <- get_timeline(user, n = maxTweets, check = F)
+    lastRLCosts = ceiling(nrow(tail(scrapedTweetsPerUser, 1)[[1]])/200)+1 # rate limit costs of last operation
+    print(sprintf("Finished user: %s; rate limit remaining: %i", user,rl$remaining))
+    # Artifically Counting down the rate limit by calculated rate limit
     rl <- rl %>% 
-      mutate(remaining = remaining - 8) # - aufrunden(len(lastEntry)/200,0)+1
-    # if rate limit exhausted, then wait to rate limit reset
-    if (rl$remaining < 10L) {
-      # Get Rate Limits to get time till reset
+      mutate(remaining = remaining - lastRLCosts) 
+    # if rate calculated limit is low check real rate limit
+    if (rl$remaining < lastRLCosts * 2) {
+      # Get rate limits to get time till reset and real rate limit
       rl <- rate_limit(token, "statuses/user_timeline")
-      if (rl$remaining < 10L) {
-        print("rate limit exceeded, waiting for rest rate limit"-)
+      if (rl$remaining < maxTweets / 200) {
+        print(sprintf("rate limit exceeded, waiting for %.6g minutes", round(rl$reset, digits = 2)))
         Sys.sleep(as.numeric(rl$reset, "secs"))
+        # Get fresh rate limit info after waiting
+        rl <- rate_limit(token, "statuses/user_timeline")
       }
-      # Get fresh rate limit info after waiting
-      rl <- rate_limit(token, "statuses/user_timeline")
     }
   }
   saveRDS(scrapedTweetsPerUser, file = "data/tweets.rds")
 }
+
 missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
   mutate(tweets = map_int(User, nrow)) %>% 
   mutate(usernames = names(scrapedTweetsPerUser)) %>% 
@@ -177,7 +180,7 @@ topHashtags = mainDataWithState %>%
 Plots:
 
 ## Social Media usage of german political paries in 2021
-```{r}
+```{r, fig.width = 20}
 tweetTimelineData = mainDataWithTweets %>% 
   filter(created_at.x > as.POSIXct("2021-01-01")) %>% 
     mutate(Partei, Partei = case_when(
@@ -202,7 +205,7 @@ partei_farben = c(
 )
 
 ggplot(tweetTimelineData)+
-  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack")+ 
+  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack", bins=100)+ 
   scale_x_datetime(date_breaks = "1 month")+ # Anpassen um die Zeitangabe richtig anzuzeigen
   scale_color_manual(values = partei_farben)+
   labs(
@@ -263,41 +266,32 @@ nestedHashtags = top3Hashtags %>%
   nest() %>% 
   group_by(Bundesland) %>% 
   nest()
-
+hashtagHTML = top3Hashtags %>% 
+  ungroup() %>% 
+  dplyr::select(-screen_name) %>% 
+  group_by(Bundesland, Partei) %>%
+  mutate(hashtags3 = paste0("#", hashtags, collapse = ", ")) %>% 
+  mutate(partei = paste0("<strong>",Partei,": </strong>")) %>% 
+  distinct(Partei, Bundesland, .keep_all=TRUE) %>% 
+  mutate(html = paste0(partei, hashtags3, "<br>")) %>% 
+  group_by(Bundesland) %>% 
+  mutate(html = paste0(html, collapse = "")) %>% 
+  distinct(Bundesland, html)
+  #mutate(hashtags3 = paste0(html,hashtags,"<br>", collapse = ", "))
 de_map <- 
   getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
   st_as_sf() %>% 
   left_join(mapData, by = c("NAME_1" = "Bundesland")) %>% 
-  left_join(nestedHashtags, by = c("NAME_1" = "Bundesland"))
+  left_join(hashtagHTML, by = c("NAME_1" = "Bundesland"))
   # dplyr::select() - waiting for dataframe
 
 
 pal <- colorQuantile("Reds", NULL, n = 9)
-#automatisierung
-popup <- for(bla in de_map[[12]]){
-              paste("<strong>",bla[[1]],"</strong>",)
-                  for(Partei in bla[[2]]){
-                    paste("#",Partei[[1]])
-                  }
-                })
-#automatisierung + paste
-popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
-                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets, "<br>",
-                for(bla in de_map[[12]]){
-                  paste("<strong>",bla[[1]],"</strong>",)
-                  for(Partei in bla[[2]]){
-                    paste("#",Partei[[1]])
-                  }
-                })
+
 # Hard coded Version                
-test <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
+popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
                 "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets, "<br>",                
-                "<strong>CDU</strong>", de_map, "<br>",
-                "<strong>SPD</strong>", de_map$, "<br>",
-                "<strong>Grüne</strong>", de_map$no_tweets, "<br>",
-                "<strong></strong>", de_map$no_tweets, "<br>",
-                "<strong>AfD</strong>", de_map$no_tweets, "<br>",
-                "<strong>Partei F </strong>", de_map$no_tweets, "<br>")
+                de_map$html, "<br>")
 
 mapTest <- 
   leaflet() %>% 
