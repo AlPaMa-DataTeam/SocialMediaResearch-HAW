@@ -1,8 +1,9 @@
 ---
 title: "R Notebook"
-autor: "AlPaMa-DataTeam"
-output: html_notebook
-
+autor: AlPaMa-DataTeam
+output:
+  html_document:
+    df_print: paged
 ---
 
 Description about the Project
@@ -10,7 +11,7 @@ Description about the Project
 # Setup:
 ```{r, include=FALSE}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr', 'ggwordcloud', "raster", "leaflet", "sf", "rgeos")
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr', 'ggwordcloud', "raster", "leaflet", "sf", "rgeos", "plotly")
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -180,7 +181,7 @@ topHashtags = mainDataWithState %>%
 Plots:
 
 ## Social Media usage of german political paries in 2021
-```{r, fig.width = 20}
+```{r}
 tweetTimelineData = mainDataWithTweets %>% 
   filter(created_at.x > as.POSIXct("2021-01-01")) %>% 
     mutate(Partei, Partei = case_when(
@@ -204,8 +205,8 @@ partei_farben = c(
     "Andere" = "grey"
 )
 
-ggplot(tweetTimelineData)+
-  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack", bins=100)+ 
+timeline <- ggplot(tweetTimelineData)+
+  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack")+ 
   scale_x_datetime(date_breaks = "1 month")+ # Anpassen um die Zeitangabe richtig anzuzeigen
   scale_color_manual(values = partei_farben)+
   labs(
@@ -215,21 +216,24 @@ ggplot(tweetTimelineData)+
     y = "Anzahl Tweets",
     color = "Retweet"
   )
+
+ggplotly(timeline)
 ```
 
 ## Word Cloud of commonly used hashtags of german german political paries in 2021
-```{r}
-ggplot(topHashtags, aes(label = hashtags, size = no_hashtags, color = no_hashtags))+
-  geom_text_wordcloud_area(area_corr = TRUE)+
-  scale_size_area(max_size = 20) +
-  theme_minimal()+
-  scale_color_gradient(low = "black", high = "lightblue")+
-  labs(
-    title = "Die 50 meist verwendeten Hashtags",
-    subtitle = "Der aktivsten User zum Thema Super League"
-  )+
+```{r, warning=FALSE}
+ggplot(topHashtags, 
+       aes(label = hashtags, 
+           size = no_hashtags
+           )
+       ) +
+  geom_text_wordcloud_area(area_corr = TRUE, shape = "square", rm_outside = T, area_corr_power = 1) +
+  # To revert, change rm_outside to FALSE and max_size to 15
+  scale_size_area(max_size = 19) +
+  theme_minimal() +
+  scale_color_gradient(low = "black", high = "lightblue") +
+  labs(title = "Die meist verwendeten Hashtags der Parteien") +
   facet_wrap(~Partei)
-
 ```
 
 ## Twitter Usage per state in 2021 (Map test)
@@ -266,6 +270,7 @@ nestedHashtags = top3Hashtags %>%
   nest() %>% 
   group_by(Bundesland) %>% 
   nest()
+
 hashtagHTML = top3Hashtags %>% 
   ungroup() %>% 
   dplyr::select(-screen_name) %>% 
@@ -278,6 +283,8 @@ hashtagHTML = top3Hashtags %>%
   mutate(html = paste0(html, collapse = "")) %>% 
   distinct(Bundesland, html)
   #mutate(hashtags3 = paste0(html,hashtags,"<br>", collapse = ", "))
+
+# Load map data from GADM
 de_map <- 
   getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
   st_as_sf() %>% 
@@ -286,24 +293,32 @@ de_map <-
   # dplyr::select() - waiting for dataframe
 
 
-pal <- colorQuantile("Reds", NULL, n = 9)
+cuts <- c(0, 20000, 40000, 60000, 80000, 100000, 120000, 140000, 160000, 180000)
+pal <- colorBin("PuBu", domain = de_map$no_tweets, bins = cuts) 
 
 # Hard coded Version                
-popup <- paste0("<strong>Bundesland: </strong>", de_map$NAME_1, "<br>",
-                "<strong>Anzahl der Tweets: </strong>", de_map$no_tweets, "<br>",                
-                de_map$html, "<br>")
+popup <- paste("<strong>Anzahl der Tweets in </strong>", 
+                "<strong>", de_map$NAME_1, ": </strong>", "<br>", de_map$no_tweets,
+                "<br>", "<br>",
+                "<b> Top 3 Hashtags pro Partei: </b>", "<br>",
+                de_map$html)
 
 mapTest <- 
-  leaflet() %>% 
-  addProviderTiles(providers$CartoDB.Voyager) %>% 
-  setView(lng = 10.4507147, lat = 50.9833118, zoom = 6) %>% 
+  leaflet(data = de_map) %>% 
+    addProviderTiles(providers$CartoDB.Voyager) %>% 
+  setView(lng = 10.4507147, lat = 50.9833118, zoom = 5) %>% 
   addPolygons(data = de_map, 
               fillColor= ~pal(no_tweets),
-              fillOpacity = 0.4, 
-              weight = 2, 
-              color = "white",
-              popup = popup)
-
+              fillOpacity = 0.8, 
+              weight = 0.5,
+              label = de_map$NAME_1,
+              color = "black",
+              popup = popup) %>% 
+  addLegend("bottomright", 
+            pal = pal, 
+            values = de_map$no_tweets, 	
+            title = "Anzahl der Tweets", 
+            opacity = 1)
 mapTest
 ```
 
@@ -313,14 +328,30 @@ missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>%
   mutate(tweets = map_int(User, nrow)) %>% 
   mutate(usernames = names(scrapedTweetsPerUser)) %>% 
   dplyr::select(-User) %>% 
-  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
+  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Twitter Daten vorhanden"))
 
+# ggplot version
 ggplot(missingTwitterUsers, aes(x="", y=missing, fill=missing)) +
   geom_bar(stat="identity", width=1) +
   coord_polar("y", start=0)
 
+# plotly version
+pieColors <- c("#000000", "#ffffff")
+
+plot_ly(
+  missingTwitterUsers, 
+  labels = ~missing, 
+  type = "pie",
+  textinfo = "percentage",
+  textposition = "inside",
+  marker = list(colors = ~pieColors)
+  ) %>% 
+  layout(title = "Anteil von vorhandenen Twitter Daten")
 ```
+
+
 ```{r}
+# to do: count is one, change color, add text and fix legend
 stackedBarData = mainData %>% 
   left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
   filter(Kategorie != "EU-Parlament") %>% 
@@ -341,9 +372,35 @@ stackedBarData = mainData %>%
   dplyr::mutate(
     count = 1
   )
+
 options(scipen = 999)
-ggplot(stackedBarData, aes(fill=missing, y=count, x=Partei))  +  # Idee: x=reorder(partei, -missing)
-    geom_bar(position="stack", stat="identity")
+
+stackedBar <- 
+  ggplot(stackedBarData, aes(fill=missing, y=count, x=Partei)) +
+  geom_bar(position="stack", 
+           stat="identity") +
+  scale_fill_manual("", values = c("#ece7f2", "#a6bddb", "#2b8cbe")) +
+  ggtitle("Verteilung von Twitter Konten pro Partei") + 
+  ylab("Anzahl der Konten") +
+  xlab("") + 
+  theme(panel.background = element_blank())
+
+ggplotly(stackedBar) %>% 
+  layout(legend = list(orientation = "h",
+                   y = -0.1, x = 0.5))
+
+plot_ly(stackedBarData, 
+        x = ~Partei, 
+        y = ~count,
+        hovertemplate = "my value: %{y}",
+        type = "bar", 
+        name = ~missing, 
+        color = ~missing
+        ) %>% 
+  layout(yaxis = list(title = "count"), 
+         barmode = "stack",
+         title = "Verteilung von Twitter Konten pro Partei")
+  
 ```
 
 
