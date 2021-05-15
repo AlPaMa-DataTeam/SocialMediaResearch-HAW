@@ -152,13 +152,6 @@ missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>%
   mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Twitter Daten vorhanden"))
 # Löschen der gescrapten Liste soabld sie nicht mehr benötigt wird um RAM zu spraren
 rm(scrapedTweetsPerUser)
-
-# Nicht benötigtes DF. Wird nach dem nächsten Commit gelöscht
-tweetAmountPerUser = allScrapedTweets %>% 
-  dplyr::mutate(tweetAmount = n()) %>% 
-  mutate(tweetAmount = replace_na(tweetAmount, 0)) %>% 
-  distinct(Name, .keep_all=TRUE) %>% 
-  dplyr::select(Name, screen_name, tweetAmount)
 ```
 
 ### Datenmodellierung für das gestapelte Balkendiagramm
@@ -240,12 +233,6 @@ rm(topHashtags, hashtagHTML, top3Hashtags,  mapData)
 
 ## Verhältnis zwischen gescrapet zu nicht scrapebaren Twitternutzern (Parlamentarier ohne angegebenen Twitter Account sind davon ausgeschlossen)
 ```{r}
-# ggplot version wird nach dem nächsten commit gelöscht
-ggplot(missingTwitterUsers, aes(x="", y=missing, fill=missing)) +
-  geom_bar(stat="identity", width=1) +
-  coord_polar("y", start=0)
-
-# plotly version
 pieColors <- c("#FF7F0E", "#1F77B4")
 
 plot_ly(
@@ -273,7 +260,6 @@ stackedBar <-
   xlab("") + 
   theme(panel.background = element_blank())
 
-# Wird beim nächstne commit gelöscht
 ggplotly(stackedBar) %>% 
   layout(legend = list(orientation = "h",
                    y = -0.1, x = 0.5))
