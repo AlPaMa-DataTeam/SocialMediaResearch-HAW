@@ -1,17 +1,32 @@
 ---
-title: "R Notebook"
-autor: AlPaMa-DataTeam
+title: "Twitteranalyse von deutschen Abgeordneten"
+author: Alvin Aziz, Pascal Belger, Mats Bente
 output:
   html_document:
     df_print: paged
 ---
 
-Description about the Project
 
-# Setup:
+<style>
+.html-widget {
+    margin: auto;
+}
+</style>
+
+<br></br>
+
+# Einleitung
+
+Schon seit Langem werden politische Disskusionen nicht nur noch im Parlament oder in TV-Debatten ausgetragen. Auch der Wahlkampf findet längst nicht nur noch in den Fußgängerzone mit Plakaten, Flyern und Luftballons statt, sondern auch im Internet. Besonders Twitter hat sich hierbei als Plattform der Wahl für viele PolitikerInnen herauskristallisiert. Nicht überraschend also, dass auch Ex-Präsident Donald Trump die vergangenen vier Jahre jede seiner Entscheidungen über diese Plattform verbreitete und kommentierte – teilweise sogar bevor ein offizielle Verkündung durch das Weiße Haus erfolgt war. Doch ist Trump längst nicht der einzige Politiker, der Social-Media für sich entdeckt hat.
+<br></br>
+So spielt auch in den deutschen Parlamenten die App mit dem weißen Vogel auf blauem Hintergrund eine große Rolle. Im Folgenden möchten wir das Twitterverhalten der Abgeordneten aus Bundestag und den einzelnen Landtagen analysieren, um festzustellen, wie populär Twitter in den einzelnen Parteien ist und welche Themen dort diskutiert werden.
+Für unsere Twitter-Recherche haben wir uns auf eine Liste des Leibniz-Instituts bezogen. Diese beinhaltete für jeden Abgeordneten den dazugehörigen User-Name auf Twitter, vorausgesetzt die jeweilige Person hat einen Account. Alle weiteren Daten konnten wir uns nun mit der Twitter-API ziehen und anschließend mit R grafisch auswerten.
+
+
+<!-- Setup: -->
 ```{r, include=FALSE}
 # Packages
-packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr', 'ggwordcloud', "raster", "leaflet", "sf", "rgeos", "plotly")
+packages <- c("ggplot2", "dplyr", "readr", "stringr", "purrr", "janitor", "ggrepel", "rtweet", "twitteR", 'purrr', 'tidyr', 'ggwordcloud', "raster", "leaflet", "sf", "rgeos", "plotly", "tidyverse")
 
 # Function to check installation and install packages
 pkgTest <- function(x)
@@ -44,9 +59,9 @@ token <- create_token(
   access_secret = access_token_secret)
 ```
 
-# Daten:
-## Parlamentarier
-```{r}
+<!-- Daten: -->
+<!-- Parlamentarier -->
+```{r, include=FALSE}
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
@@ -88,8 +103,8 @@ mainData = mainData %>%
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 ```
 
-## Tweets 
-```{r}
+<!-- Tweets -->
+```{r, include=FALSE}
 # Relevant parliamentarians for Twitter scraping
 twitterUser = mainData %>% 
   filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
@@ -138,8 +153,9 @@ if (file.exists(allTweetsRDS)){
 twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$usernames))'
 ```
 
-## Datenmodelierung
-### Datenmodelierung gescrapten Liste der Twitter Daten (allgeimein und für das Kuchendiagramm)
+<!-- Datenmodellierung -->
+<!-- Datenmodelierung gescrapten Liste der Twitter Daten (allgeimein und für das Kuchendiagramm) -->
+
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 # Umwandeln der gescrapten Liste in ein Dataframe und Verbinden mit dem Parlamentarier Dataframe
 allScrapedTweets = bind_rows(scrapedTweetsPerUser) %>% 
@@ -156,7 +172,7 @@ missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>%
 rm(scrapedTweetsPerUser)
 ```
 
-### Datenmodellierung für das gestapelte Balkendiagramm
+<!-- Datenmodellierung für das gestapelte Balkendiagramm -->
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 stackedBarData = mainData %>% 
   left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
@@ -166,13 +182,13 @@ stackedBarData = mainData %>%
   dplyr::mutate(count = 1)
 ```
 
-### Datenmodellierung für den Zeitstrahl
+<!-- Datenmodellierung für den Zeitstrahl -->
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 tweetTimelineData = allScrapedTweets %>% 
   filter(created_at.x > as.POSIXct("2021-01-01"))
 ```
 
-### Datenmodellierung für die Wordcloud (bei der Karte wiederverwendet)
+<!-- Datenmodellierung für die Wordcloud (bei der Karte wiederverwendet) -->
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'} 
 topHashtags = allScrapedTweets %>% 
   unnest(hashtags) %>% 
@@ -188,7 +204,7 @@ topHashtagsLimit = topHashtags %>%
   filter(no_hashtags > 50)
 ```
 
-### Daten für die Karte
+<!-- Daten für die Karte -->
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 mapData = allScrapedTweets %>% 
   group_by(Bundesland) %>%
@@ -225,16 +241,24 @@ de_map <-
   left_join(hashtagHTML, by = c("NAME_1" = "Bundesland"))
 ```
 
-## Löschen nicht benötigter Dataframes
+<!-- Löschen nicht benötigter Dataframes -->
 ```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 rm(topHashtags, hashtagHTML, top3Hashtags,  mapData)
 ```
 
 
-# Plots:
+<!-- Plots -->
+<br></br>
 
-## Verhältnis zwischen gescrapet zu nicht scrapebaren Twitternutzern (Parlamentarier ohne angegebenen Twitter Account sind davon ausgeschlossen)
-```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+## Verhältnis zwischen gescraped zu nicht scrapebaren Twitternutzern 
+### (Parlamentarier ohne angegebenen Twitter Account sind davon ausgeschlossen)
+
+<br></br>
+
+Unsere erste Auswertung dient zur Validierung unserer Daten, denn nicht alle User-Namen, die in der Liste des Leibniz-Instituts aufgeführt wurden, lieferten uns Daten. Wie aus dem Tortendiagramm ersichtlich wird, scheint ein Großteil der Daten korrekt zu sein und lieferte uns Ergebnisse. Diese konnten auch allen weiteren Auswertungen berücksichtigt werden. Allerdings sind es insgesamt 151 Accounts, die uns keine Daten lieferten. Dies kann verschiedene Gründe haben: Es könnte sich bei dem angegebenen Account um einen älteren und bereits gelöschten Account handeln. Ebenfalls möglich ist, dass einige der Accounts im Privat-Modus sind, daher nicht von uns eingesehen werden können. Ebenfalls kann es sein, dass ein Account falsch geschrieben wurde. Es gibt sicherlich noch einige weitere Gründe, warum wir keine Daten von diesen Accounts bekommen haben könnten, doch das soll nicht zentraler Bestandteil dieser Untersuchung sein.
+
+<br></br>
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
 pieColors <- c("#FF7F0E", "#1F77B4")
 
 plot_ly(
@@ -245,11 +269,18 @@ plot_ly(
   textposition = "inside",
   color = list(pieColors)
   ) %>% 
-  layout(title = "Anteil von vorhandenen Twitter Daten")
+  layout(title = "Anteil von vorhandenen Twitter Daten") %>% 
+  htmltools::div(align = "center")
 ```
 
-## Verhältnis ziwschen Parlamentarier jeder Partei mit vorhandenem Twitter Account, fehlendem Twitter Account und nicht scrapebaren Twitter Account pro Partei
-```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+## Verhältnis zwischen Parlamentarier jeder Partei mit vorhandenem Twitter Account, fehlendem Twitter Account und nicht scrapebaren Twitter Account pro Partei
+
+<br></br>
+
+Wie sich auf den ersten Blick feststellen lässt, stellt die CDU landesweit mit Abstand die meisten Abgeordneten und auch bei den Twitter-Usern hat die Partei von Kanzlerin Merkel die Nase leicht vor dem Koalitionspartner SPD. Allerdings hat die CDU auch den größten Anteil an PolitikerInnen, die nicht auf Twitter aktiv sind. Tatsächlich ist die CDU die einzige Partei, wenn man den kumulierten Wert für „Andere“ außenvor lässt, bei denen die Mehrheit kein Twitter nutzt. Bei der SPD gestaltet sich dies sehr ausgeglichen. Grüne, Linke und FDP haben jeweils einen deutlich größeren Anteil an Twitter-NutzerInnen in ihren Reihen. Auch bei der AfD gibt es einen größeren Anteil an Leuten, die Twitter nutzen. Damit bestätigen sich vermutlich die Vorahnungen vieler, dass die „alteingesessenen Parteien“ sich noch etwas sträuben vor dem Internet, während die „jüngeren“ Parteien dieses bereits deutlich aktiver zu nutzen wissen. Doch sagt einzig der Besitz eines Accounts noch lange nichts über die Nutzung aus.
+
+<br></br>
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
 options(scipen = 999)
 
 stackedBar <- 
@@ -262,26 +293,26 @@ stackedBar <-
   xlab("") + 
   theme(panel.background = element_blank())
 
-ggplotly(stackedBar) %>% 
+ggplotly(stackedBar, tooltip = "") %>% 
   layout(legend = list(orientation = "h",
-                   y = -0.1, x = 0.5))
-
-plot_ly(stackedBarData, 
-        x = ~Partei, 
-        y = ~count,
-        hovertemplate = "my value: %{y}",
-        type = "bar", 
-        name = ~missing, 
-        color = ~missing
-        ) %>% 
-  layout(yaxis = list(title = "count"), 
-         barmode = "stack",
-         title = "Verteilung von Twitter Konten pro Partei")
-  
+                   y = -0.1, x = 0.5)) %>% 
+  htmltools::div(align = "center")
 ```
+<br></br>
 
 ## Twitter Nutzungsverlauf pro Partei im Jahr 2021
-```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+
+<br></br>
+
+Ende des Jahres stehen Bundestagswahlen an. Deutschland sucht eine neue Regierung für die nächsten vier Jahre. Das heißt für viele PolitikerInnen, dass der Kampf um Stimmen und Sitze im Parlament begonnen hat. Gerade auch weil große Veranstaltungen derzeit nicht möglich sind, wäre es also eine gute Möglichkeit sich über die sozialen Medien mit WählerInnen in Verbindung zu setzen. Wir haben deswegen die Aktivitäten der PolitikerInnen seit Jahresbeginn in einer Grafik dargestellt.
+<br>
+Deutlich zu erkennen ist, dass die AfD ganz oben thront und die meisten Tweets abschickt. Das mag etwas überraschend sein, denn schließlich belegt die AfD bei den Nutzern gerade einmal Rang vier. Noch drastischer fällt dieser Unterschied bei den kleineren Parteien und den fraktionslosen Abgeordneten aus, die sich hinter der Gruppe „Andere“ verbergen. Zwar stellen sie, die kleinste Gruppe an PolitikerInnen, sind jedoch am zweithäufigsten aktiv. Dies kann sehr gut daran liegen, dass diese Parteien und insbesondere die fraktionslosen Abgeordneten in den traditionellen Medien keine besonders große Rolle spielen, da sie sich in einer krassen Minderheit, im Vergelich zu den anderen Parteien, befinden und daher auch keine all zu gewichtige Stimme in den Parlamenten haben.
+Bei der AfD sind ähnliche Motive vermutlich eine Begründung für die hohe Aktivität. Die Alternative für Deutschland zeigt sich häufig unzufrieden mit der „Mainstreammedia“. Auf Twitter nutzen sie daher gerne ihre Chance, die Dinge ins „rechte Licht“ zu rücken. Überraschend ist, dass die SPD zwar die zweitmeisten Nutzer stellt, jedoch deutlich am seltensten Tweeten. FDP und Grüne tummeln sich im Mittelfeld. Die Linke schneidet bei der Aktivität etwas unterdurchschnittlich ab, während die CDU, vermutlich auch aufgrund der größten Anzahl an Nutzern, den dritten Platz belegt.
+Wenn man die einzelnen Verläufe miteinander vergleicht, wird man feststellen, dass sich diese ähneln. Dies hat unterschiedliche Gründe. Das eine ist die Aufbereitung der Daten. Für die grafische Darstellung wird der Zeitraum in mehrere Abschnitte unterteilt. Zwischen diesen Zeitpunkten wird jeweils die Anzahl der abgesetzten Tweets als Punkt im Koordinatensystem eingetragen. Mehr Punkte würden selbstverständlich zu einem genaueren Ergebnis führen, welches sich dann auch optisch nicht mehr derart gleichen würden. Allerdings wird bei zu vielen Messpunkten die Grafik am Ende zu unübersichtlich, daher muss hier ein Mittelweg gefunden werden.
+Andererseits diktiert natürlich auch die Themenlage die Aktivität der Nutzer. So werden mehr Tweets abgesetzt, wenn ein Thema gerade heiß diskutiert wird und weniger, wenn sich die Anzahl relevanter Themen verringert. Dazu kommt noch das Verhalten der PolitikerInnen. Die einen, die viel tweeten, können ihre Frequenz vielleicht sogar recht konstant halten, während die anderen, die eher selten tweeten, für die Ausschläge noch oben bzw. unten sorgen können.
+
+<br></br>
+```{r, warning=FALSE, echo=FALSE, message=FALSE}
 
 
 partei_farben = c(
@@ -294,8 +325,14 @@ partei_farben = c(
     "Andere" = "grey"
 )
 
+tweetTimelineData <- tweetTimelineData %>% 
+  rename(
+    Erstellungszeit = created_at.x
+  )
+
 timeline <- ggplot(tweetTimelineData)+
-  geom_freqpoly(aes(created_at.x, color = Partei), position = "stack")+ 
+  geom_freqpoly(aes(Erstellungszeit, color = Partei), 
+                position = "stack")+ 
   scale_x_datetime(date_breaks = "1 month")+ # Anpassen um die Zeitangabe richtig anzuzeigen
   scale_color_manual(values = partei_farben)+
   labs(
@@ -306,26 +343,53 @@ timeline <- ggplot(tweetTimelineData)+
     color = "Retweet"
   )
 
-ggplotly(timeline)
+ggplotly(timeline, tooltip = '') %>% 
+  htmltools::div(align = "center")
 ```
+<br></br>
 
 ## Wordclound der meistgenutzten Tweets in Deutschland pro Partei
-```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+
+<br></br>
+
+Um herauszufinden, welche Themen die einzelnen Parteien verfolgen muss im nächsten Schritt ein Blick auf den Inhalt der Tweets gerichtet werden. Wir haben uns dafür entschieden, die verwendeten Hashtags auszuwerten, da diese als Verschlagwortung und somit thematische Einordnung der Tweets dienen. In der Wordcloud werden die beliebtesten Hashtags der Parteien dargestellt. Die Größe des Worts in der Cloud gibt die Häufigkeit der Verwendung an.
+Wenig überraschend verwenden die Parteien häufig ihren eigenen Namen als Hashtag – besonders exzessiv betreibt dies die AfD. Auch die anderen Parteien werden häufig erwähnt. Dazu ist auch Corona bei allen Parteien ein dominierendes Thema. Allerdings lassen sich auch Unterschiede herausfiltern. Bei den Grünen, Linken und der SPD ist zum Beispiel der Hashtag „noafd“ recht populär.
+Bei den Grünen lassen sich zudem viele Tweets zum Klimawandel erkennen: Klimaschutz, Klimakrise, Energiewende und Verkehrswende sind die populärsten Beispiele. Bei den Linken finden sich viele sozial-politische Themen in Hashtags wieder: Mietendeckel, HartzIV, Rassismus, Solidarität. Das gemischteste Bild gibt wahrscheinlich die FDP ab die zwischen Freiheit, Klimaschutz und Digitalisierung auch Schlagwörter wie Trump und Mietendeckel verwendet.
+Die CDU/CSU vergibt kaum Themenbezogene Hashtags. Eher schwammig sind Themen wie Zukunft, Danke, Politik und Demokratie. Es finden sich allerdings auch thematische Gruppen wie Polizei, Sicherheit und Bundeswehr, allerdings sind dies häufig eher kleine Themen. Auch wenn sie zum konservativen Standpunkt der CDU/CSU passen.
+Wie bei der CDU/CSU, sind ebenso bei der SPD sind viele Hashtags nicht besonders aussagekräftig. Etwas erstaunlich ist, dass ausgerechnet die Ministerpräsidentin von Rheinland-Pfalz Malu Dreyer besonders häufig erwähnt wird und nicht etwa Kanzlerkandidat Olaf Scholz. Neben einigen Corona bedingten Themen (Solidarität, Kurzarbeit und Lockdown) lassen sich vereinzelt auch andere Themen erkennen, wie zum Beispiel Wirecard. Ein Thema das offensichtlich auf Twitter nur von der SPD aufgegriffen wird. Allerdings könnte es sich hierbei auch um Rechtfertigungen handeln, denn schließlich stellte die SPD zum Zeitpunkt des Skandals mit Olaf Scholz den Finanzminister. Dieser musste sich in diesem Jahr zudem dem Untersuchungsausschuss stellen, gut möglich, dass es daher zu der häufigen Verwendung des Hashtags kam.
+ Bei der AfD wird weniger mit eigenen Themen als mit Feindbildern gearbeitet. Die Regierungsparteien, Merkel und Antifa stechen deutlich hervor. Mit dem Hashtag „Staatsfunk“ wird implizit eine Art Begründung für das massive Twitter-Aufkommen der PolitikerInnen geliefert. Zudem scheint das Schüren von Angst auf Social-Media eine gängige Methode der AfD zu sein: Terror, Geisel, Syrien und Stasi zählen zu den häufig verwendeten Hashtags. Auch die DDR-Partei SED findet sich häufig in den Tweets wieder. Mit dem Grundgesetz, welches vermutlich in den Augen der AfD häufig mit den Füßen getreten wird, gesellt sich eine weiterer prominenter Institution zu den beliebten AfD-Hashtags.
+
+<br></br>
+
+```{r, fig.align='center', warning=FALSE, echo=FALSE, message=FALSE}
 ggplot(topHashtagsLimit, 
        aes(label = hashtags, 
            size = no_hashtags
            )
        ) +
   geom_text_wordcloud_area(area_corr = TRUE, shape = "square", rm_outside = T, area_corr_power = 1) +
-  scale_size_area(max_size = 19) +
+  scale_size_area(max_size = 15) +
   theme_minimal() +
   scale_color_gradient(low = "black", high = "lightblue") +
   labs(title = "Die meist verwendeten Hashtags der Parteien") +
   facet_wrap(~Partei)
 ```
+<br></br>
 
 ## Deutschlandkarte der Twitternutzung pro Bundesland mit den drei meistgenutzten Hashtags pro Partei
-```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+
+<br></br>
+
+Zuletzt wollten wir überprüfen wie sich das Tweet-Verhalten zwischen den einzelnen Bundesländern unterscheidet. Dafür haben wir nur die PolitikerInnen der jeweiligen Landtage bzw. Bürgerschaften berücksichtigt. Gut zu erkennen ist, dass die meisten Tweets aus Berlin (174.554) und NRW (162.994) stammen. Allgemein lässt sich sagen, dass in den eher kleineren Bundesländer weniger getweetet wird, als in den Großen – Berlin als Stadtstaat (und Sitz der Bundesregierung) bildet eine Ausnahme.
+<br>
+Neben der Aktivität der Bundesländer, haben wir auch jeweils die Top drei Hashtags pro Partei nach Bundesland aufgeschlüssel. Dafür haben wir allerdings nur Hashtags in die Liste mit aufgenommen, die häufiger als 20-mal verwendet wurden und die eingängigen Parteinamen herausgefiltert, um so ein klareres Bild zu bekommen.
+ Neben dem Landesparlament werden auch häufig Städte und Stadtteile erwähnt. In Hamburg ist dies besonders auffällig. Die Grünen verwenden beispielsweise häufig Eimsbüttel als Hashtag. Bei der Bürgerschaftswahl 2020 konnten die Grünen gerade in Eimsbüttel und Umgebung teilweise mehr Stimmen als die SPD erringen und sich als stärkste Kraft im Stadtteil etablieren. 
+Bei der SPD in Hamburg ist der Hashtag MuslimeFürDeutschland besonders beliebt. Dazu passend ist die Organisation für junge Muslime AhmadiyyaJugend offensichtlich ebenfalls ein Anliegen der Hamburger SPD. Auch in Thüringen scheint sich die SPD für die Jugend auf Twitter starkzumachen. Dort ist der meist verwendete Hashtag FokusJugend. In Bayern hingegen scheint sich die SPD besonders um Niedersachsen und Kaiserslautern zu kümmern, was etwas überraschend sein mag. Auch die FDP-PolitikerInnen werfen den Blick über die Landesgrenzen hinaus. Ihre beliebtesten Hashtags sind China, NRWKoalition und Russland. Darüber hinaus bietet die interaktive Karte noch viele weitere spannende Informationen. Mit einem einfachen Klick auf das jeweilige Bundesland bekommt ihr die relevanten Daten geliefert.
+
+<br></br>
+
+
+```{r, fig.align='center', warning=FALSE, echo=FALSE, message=FALSE}
 # References:
 # https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
 # https://r-spatial.github.io/mapview/articles/articles/mapview_04-popups.html
@@ -358,6 +422,8 @@ map <-
             opacity = 1)
 map
 ```
+<br></br>
 
+# Fazit
 
-
+Das Nutzungsverhalten der einzelnen Parteien variiert sehr stark. Die CDU/CSU setzte aufgrund der Masse an PolitikerInnen viele Tweets ab, bleibt jedoch meist oberflächlich. Ebenso die SPD, die zudem mit Abstand am seltensten tweetet, trotz der vielen Accounts. Linke, Grüne und FDP tweeten nicht so häufig, wie die CDU/CSU und die AfD, dafür aber deutlich Themenbezogener. Während die Grünen und Linke ein klares Hauptthema haben, ist die FDP etwas breiter aufgestellt. Allerdings schreiben die PolitikerInnen der FDP auch die meisten Beiträgen von den drei Parteien. Das „Sammelbecken“ Andere ist etwas schwer auszuwerten, da sich da hinter viele kleinen Parteien, so wie fraktionslose Abgeordnete verbergen. Doch lässt sich festhalten, dass es auch hier ein sehr großes Aufkommen an Tweets gibt, wahrscheinlich um die Plattform Twitter für sich zu nutzen und Aufmerksamkeit zu bekommen, die man aufgrund der eher geringen Relevanz in anderen Medien nicht bekommt. Die meisten Tweets stammen von der AfD. An den Themen lässt sich erkennen, dass auch im Internet eher Anti-Kampagnen und Feindbilder heraufbeschworen werden.
