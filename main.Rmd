@@ -161,6 +161,7 @@ twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$use
 allScrapedTweets = bind_rows(scrapedTweetsPerUser) %>% 
   mutate(screen_name = tolower(screen_name)) %>% 
   group_by(screen_name) %>% 
+  distinct(text, .keep_all = TRUE) %>% 
   full_join(mainData, by = c('screen_name'='SM_Twitter_user'))
 
 missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
@@ -225,7 +226,7 @@ hashtagHTML = top3Hashtags %>%
   ungroup() %>% 
   dplyr::select(-screen_name) %>% 
   group_by(Bundesland, Partei) %>%
-  mutate(hashtags3 = paste0("#", hashtags, collapse = ", ")) %>% 
+  mutate(hashtags3 = paste0("#", hashtags, "(", no_hashtags, ")", collapse = ", ")) %>% 
   mutate(partei = paste0("<strong>",Partei,": </strong>")) %>% 
   distinct(Partei, Bundesland, .keep_all=TRUE) %>% 
   mutate(html = paste0(partei, hashtags3, "<br>")) %>% 
