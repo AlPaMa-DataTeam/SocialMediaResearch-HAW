@@ -44,14 +44,47 @@ token <- create_token(
   access_secret = access_token_secret)
 ```
 
-# Data:
-## Parliamentarians 
+# Daten:
+## Parlamentarier
 ```{r, include=FALSE}
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
 try(mainData <- read_csv(url(urlfile)))
-# Create Backup
+mainData = mainData %>% 
+  mutate(SM_Twitter_user = tolower(SM_Twitter_user)) %>% 
+  filter(Kategorie != "EU-Parlament") %>% 
+  mutate(Kategorie, Bundesland = case_when(
+    Kategorie == "Abgeordnetenhaus von Berlin"~"Berlin",
+    Kategorie == "Bayerischer Landtag"~"Bayern",
+    Kategorie == "Bremische Bürgerschaft"~"Bremen",
+    Kategorie == "Hamburgische Bürgerschaft"~"Hamburg",
+    Kategorie == "Hessischer Landtag"~"Hessen",
+    Kategorie == "Landtag Brandenburg"~"Brandenburg",
+    Kategorie == "Landtag des Saarlandes"~"Saarland",
+    Kategorie == "Landtag Mecklenburg-Vorpommern"~"Mecklenburg-Vorpommern",
+    Kategorie == "Landtag Nordrhein-Westfalen"~"Nordrhein-Westfalen",
+    Kategorie == "Landtag Rheinland-Pfalz"~"Rheinland-Pfalz",
+    Kategorie == "Landtag Sachsen-Anhalt"~"Sachsen-Anhalt",
+    Kategorie == "Landtag von Baden-Württemberg"~"Baden-Württemberg",
+    Kategorie == "Niedersächsischer Landtag"~"Niedersachsen",
+    Kategorie == "Sächsischer Landtag"~"Sachsen",
+    Kategorie == "Schleswig-Holsteinischer Landtag"~"Schleswig-Holstein",
+    Kategorie == "Thüringer Landtag"~"Thüringen",
+    Kategorie == "Bundestag"~"Deutschland",
+    TRUE ~ Kategorie)) %>% 
+  mutate(Partei, Partei = case_when(
+    Partei == "CSU"~"CDU/CSU",
+    Partei == "CDU"~"CDU/CSU",
+    Partei == "FDP/DVP"~"FDP",
+    Partei == "FW"~"Andere",
+    Partei == "fraktionslos"~"Andere",
+    Partei == "SSW"~"Andere",
+    Partei == "BIW"~"Andere",
+    Partei == "BVB/FW"~"Andere",
+    TRUE ~ Partei
+  ))
+# Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 ```
 ## Tweets 
@@ -63,7 +96,7 @@ twitterUser = mainData %>%
   mutate(SM_Twitter_id = as.character(SM_Twitter_id))
 
 # Check current rate limits
-rate_limit(token) # All
+#rate_limit(token) # All
 #rate_limit(token, "statuses/user_timeline") # user_timeline
 allTweetsRDS = 'data/tweets.rds'
 if (file.exists(allTweetsRDS)){
@@ -95,106 +128,174 @@ if (file.exists(allTweetsRDS)){
   saveRDS(scrapedTweetsPerUser, file = "data/tweets.rds")
 }
 
-missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
+# Optionaler Abgleich und erneutes Definieren der zu scrapenden User (Kann aktiviert werden falls das Scrapen abbricht)
+'missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
   mutate(tweets = map_int(User, nrow)) %>% 
   mutate(usernames = names(scrapedTweetsPerUser)) %>% 
   dplyr::select(-User) %>% 
   mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
-twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$usernames))
+twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$usernames))'
 ```
-## Data processing
-```{r, include=FALSE}
-# All scraped tweets in a tidy dataframe. Modifications: All screen_name Data is lowercase, added column with amount of tweets per user
+## Datenmodelierung
+### Datenmodelierung gescrapten Liste der Twitter Daten (allgeimein und für das Kuchendiagramm)
+```{r}
+# Umwandeln der gescrapten Liste in ein Dataframe und Verbinden mit dem Parlamentarier Dataframe
 allScrapedTweets = bind_rows(scrapedTweetsPerUser) %>% 
   mutate(screen_name = tolower(screen_name)) %>% 
   group_by(screen_name) %>% 
-  dplyr::mutate(tweetAmount = n())
+  full_join(mainData, by = c('screen_name'='SM_Twitter_user'))
 
-# Convert every username to lowercase for correct joining
-mainDataLower = mainData %>% 
-  mutate(SM_Twitter_user = tolower(SM_Twitter_user))
-  
-# Joined the dataframes to add all politicians without tweets and set tweetsAmount to 0
-mainDataWithTweets = allScrapedTweets %>% 
-  full_join(mainDataLower, by = c('screen_name'='SM_Twitter_user')) %>% 
-  mutate(tweetAmount = replace_na(tweetAmount, 0))
+missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
+  mutate(tweets = map_int(User, nrow)) %>% 
+  mutate(usernames = names(scrapedTweetsPerUser)) %>% 
+  dplyr::select(-User) %>% 
+  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Twitter Daten vorhanden"))
+# Löschen der gescrapten Liste soabld sie nicht mehr benötigt wird um RAM zu spraren
+rm(scrapedTweetsPerUser)
 
-# Expanded vectors with hashtags to have one hashtag per row (rest of the data got duplicated)
-expandedHashtags = mainDataWithTweets %>% 
-  unnest(hashtags)
-# Amount of tweets per person. Problem with 96 missing entries (not EU-Parlamentarians)
-tweetAmount = mainDataWithTweets %>% 
-  filter(Kategorie != "EU-Parlament") %>%
+# Nicht benötigtes DF. Wird nach dem nächsten Commit gelöscht
+tweetAmountPerUser = allScrapedTweets %>% 
+  dplyr::mutate(tweetAmount = n()) %>% 
+  mutate(tweetAmount = replace_na(tweetAmount, 0)) %>% 
   distinct(Name, .keep_all=TRUE) %>% 
   dplyr::select(Name, screen_name, tweetAmount)
+```
 
+### Datenmodellierung für das gestapelte Balkendiagramm
+```{r}
+stackedBarData = mainData %>% 
+  left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
+  mutate(missing = replace_na(missing, "Kein Account")) %>% 
+  dplyr::select(Name, Partei, missing) %>%
+  group_by(Partei) %>%
+  dplyr::mutate(count = 1)
+```
 
-# Wenn jmd Lust hat kann man hier rausfinden warum 96 Politiker fehlen. Eigentlich müsste der full_join alle in Tweet Amount eingefügt haben
-mainDataLowerNames = mainDataLower %>% 
-  dplyr::select(Name)
-  
-tweetAmountNames = tweetAmount %>% 
-  dplyr::select(Name)
+### Datenmodellierung für den Zeitstrahl
+```{r}
+tweetTimelineData = allScrapedTweets %>% 
+  filter(created_at.x > as.POSIXct("2021-01-01"))
+```
 
-mainDataWithState = expandedHashtags %>% 
-  mutate(Kategorie, Bundesland = case_when(
-    Kategorie == "Abgeordnetenhaus von Berlin"~"Berlin",
-    Kategorie == "Bayerischer Landtag"~"Bayern",
-    Kategorie == "Bremische Bürgerschaft"~"Bremen",
-    Kategorie == "Hamburgische Bürgerschaft"~"Hamburg",
-    Kategorie == "Hessischer Landtag"~"Hessen",
-    Kategorie == "Landtag Brandenburg"~"Brandenburg",
-    Kategorie == "Landtag des Saarlandes"~"Saarland",
-    Kategorie == "Landtag Mecklenburg-Vorpommern"~"Mecklenburg-Vorpommern",
-    Kategorie == "Landtag Nordrhein-Westfalen"~"Nordrhein-Westfalen",
-    Kategorie == "Landtag Rheinland-Pfalz"~"Rheinland-Pfalz",
-    Kategorie == "Landtag Sachsen-Anhalt"~"Sachsen-Anhalt",
-    Kategorie == "Landtag von Baden-Württemberg"~"Baden-Württemberg",
-    Kategorie == "Niedersächsischer Landtag"~"Niedersachsen",
-    Kategorie == "Sächsischer Landtag"~"Sachsen",
-    Kategorie == "Schleswig-Holsteinischer Landtag"~"Schleswig-Holstein",
-    Kategorie == "Thüringer Landtag"~"Thüringen",
-    Kategorie == "Bundestag"~"Deutschland",
-    TRUE ~ Kategorie))
-
-topHashtags = mainDataWithState %>% 
+### Datenmodellierung für die Wordcloud (bei der Karte wiederverwendet)
+```{r} 
+topHashtags = allScrapedTweets %>% 
+  unnest(hashtags) %>% 
   mutate(hashtags = tolower(hashtags)) %>% 
   dplyr::select(Partei, hashtags, Bundesland) %>% 
   filter(!is.na(hashtags)) %>% 
-  group_by(Partei, hashtags) %>%
-  mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU/CSU",
-    Partei == "CDU"~"CDU/CSU",
-    Partei == "FDP/DVP"~"FDP",
-    Partei == "FW"~"Andere",
-    Partei == "fraktionslos"~"Andere",
-    TRUE ~ Partei
-  )) %>% 
+  group_by(Partei, hashtags) %>%  
   dplyr::mutate(
     no_hashtags = n()
   ) %>% 
-  distinct(Partei, hashtags, no_hashtags, .keep_all = TRUE) %>%
-  filter(no_hashtags > 20)
-  
-
+  distinct(Partei, hashtags, no_hashtags, .keep_all = TRUE)
+topHashtagsLimit = topHashtags %>% 
+  filter(no_hashtags > 50)
 ```
-Plots:
 
-## Social Media usage of german political paries in 2021
+### Daten für die Karte
 ```{r}
-tweetTimelineData = mainDataWithTweets %>% 
-  filter(created_at.x > as.POSIXct("2021-01-01")) %>% 
-    mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU/CSU",
-    Partei == "CDU"~"CDU/CSU",
-    Partei == "FDP/DVP"~"FDP",
-    Partei == "FW"~"Andere",
-    Partei == "fraktionslos"~"Andere",
-    Partei == "SSW"~"Andere",
-    Partei == "BIW"~"Andere",
-    Partei == "BVB/FW"~"Andere",
-    TRUE ~ Partei
-  ))
+mapData = allScrapedTweets %>% 
+  group_by(Bundesland) %>%
+  dplyr::mutate(
+    no_tweets = n()
+  ) %>%
+  dplyr::select(Bundesland, no_tweets) %>% 
+  distinct(Bundesland, .keep_all=TRUE) %>% 
+  filter(Bundesland != "Deutschland")
+
+# Evaluieren der drei häufigsten Hashtags pro partei
+top3Hashtags = topHashtags %>% 
+  group_by(Bundesland, Partei) %>% 
+  slice_max(order_by = no_hashtags, n = 3)
+
+# Hinzufügen einer Spalte mit den Hashtags pro Partei in form eines HTML-Strings
+hashtagHTML = top3Hashtags %>% 
+  ungroup() %>% 
+  dplyr::select(-screen_name) %>% 
+  group_by(Bundesland, Partei) %>%
+  mutate(hashtags3 = paste0("#", hashtags, collapse = ", ")) %>% 
+  mutate(partei = paste0("<strong>",Partei,": </strong>")) %>% 
+  distinct(Partei, Bundesland, .keep_all=TRUE) %>% 
+  mutate(html = paste0(partei, hashtags3, "<br>")) %>% 
+  group_by(Bundesland) %>% 
+  mutate(html = paste0(html, collapse = "")) %>% 
+  distinct(Bundesland, html)
+
+# Kartendaten zusammenführen
+de_map <- 
+  getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
+  st_as_sf() %>% 
+  left_join(mapData, by = c("NAME_1" = "Bundesland")) %>% 
+  left_join(hashtagHTML, by = c("NAME_1" = "Bundesland"))
+```
+
+## Löschen nicht benötigter Dataframes
+```{r}
+rm(topHashtags, hashtagHTML, top3Hashtags,  mapData)
+```
+
+
+# Plots:
+
+## Verhältnis zwischen gescrapet zu nicht scrapebaren Twitternutzern (Parlamentarier ohne angegebenen Twitter Account sind davon ausgeschlossen)
+```{r}
+# ggplot version wird nach dem nächsten commit gelöscht
+ggplot(missingTwitterUsers, aes(x="", y=missing, fill=missing)) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y", start=0)
+
+# plotly version
+pieColors <- c("#FF7F0E", "#1F77B4")
+
+plot_ly(
+  missingTwitterUsers, 
+  labels = ~missing, 
+  type = "pie",
+  textinfo = "percentage",
+  textposition = "inside",
+  color = list(pieColors)
+  ) %>% 
+  layout(title = "Anteil von vorhandenen Twitter Daten")
+```
+
+## Verhältnis ziwschen Parlamentarier jeder Partei mit vorhandenem Twitter Account, fehlendem Twitter Account und nicht scrapebaren Twitter Account pro Partei
+```{r}
+options(scipen = 999)
+
+stackedBar <- 
+  ggplot(stackedBarData, aes(fill=missing, y=count, x=Partei)) +
+  geom_bar(position="stack", 
+           stat="identity") +
+  scale_fill_manual("", values = c("#ece7f2", "#a6bddb", "#2b8cbe")) +
+  ggtitle("Verteilung von Twitter Konten pro Partei") + 
+  ylab("Anzahl der Konten") +
+  xlab("") + 
+  theme(panel.background = element_blank())
+
+# Wird beim nächstne commit gelöscht
+ggplotly(stackedBar) %>% 
+  layout(legend = list(orientation = "h",
+                   y = -0.1, x = 0.5))
+
+plot_ly(stackedBarData, 
+        x = ~Partei, 
+        y = ~count,
+        hovertemplate = "my value: %{y}",
+        type = "bar", 
+        name = ~missing, 
+        color = ~missing
+        ) %>% 
+  layout(yaxis = list(title = "count"), 
+         barmode = "stack",
+         title = "Verteilung von Twitter Konten pro Partei")
+  
+```
+
+## Twitter Nutzungsverlauf pro Partei im Jahr 2021
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
+
+
 partei_farben = c(
     "CDU/CSU" = "black",
     "SPD" = "#E30013",
@@ -220,90 +321,37 @@ timeline <- ggplot(tweetTimelineData)+
 ggplotly(timeline)
 ```
 
-## Word Cloud of commonly used hashtags of german german political paries in 2021
+## Wordclound der meistgenutzten Tweets in Deutschland pro Partei
 ```{r, warning=FALSE}
-ggplot(topHashtags, 
+ggplot(topHashtagsLimit, 
        aes(label = hashtags, 
            size = no_hashtags
            )
        ) +
   geom_text_wordcloud_area(area_corr = TRUE, shape = "square", rm_outside = T, area_corr_power = 1) +
-  # To revert, change rm_outside to FALSE and max_size to 15
   scale_size_area(max_size = 19) +
   theme_minimal() +
-  scale_color_gradient(low = "black", high = "lightblue") +
   labs(title = "Die meist verwendeten Hashtags der Parteien") +
   facet_wrap(~Partei)
 ```
 
-## Twitter Usage per state in 2021 (Map test)
+## Deutschlandkarte der Twitternutzung pro Bundesland mit den drei meistgenutzten Hashtags pro Partei
 ```{r}
 # References:
 # https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
 # https://r-spatial.github.io/mapview/articles/articles/mapview_04-popups.html
 
-mapData = mainDataWithState %>% 
-  group_by(Bundesland) %>%
-  mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU/CSU",
-    Partei == "CDU"~"CDU/CSU",
-    Partei == "FDP/DVP"~"FDP",
-    Partei == "FW"~"Andere",
-    Partei == "fraktionslos"~"Andere",
-    TRUE ~ Partei
-  )) %>% 
-  dplyr::mutate(
-    no_tweets = n()
-  ) %>%
-  dplyr::select(Bundesland, no_tweets) %>% 
-  distinct(Bundesland, .keep_all=TRUE) %>% 
-  filter(Bundesland != "Deutschland") %>% 
-  filter(Bundesland != "EU-Parlament")
-
-top3Hashtags = topHashtags %>% 
-  group_by(Bundesland, Partei) %>% 
-  slice_max(order_by = no_hashtags, n = 3)
-
-nestedHashtags = top3Hashtags %>% 
-  dplyr::select(Partei, Bundesland, hashtags) %>% 
-  group_by(Partei, Bundesland) %>%
-  nest() %>% 
-  group_by(Bundesland) %>% 
-  nest()
-
-hashtagHTML = top3Hashtags %>% 
-  ungroup() %>% 
-  dplyr::select(-screen_name) %>% 
-  group_by(Bundesland, Partei) %>%
-  mutate(hashtags3 = paste0("#", hashtags, collapse = ", ")) %>% 
-  mutate(partei = paste0("<strong>",Partei,": </strong>")) %>% 
-  distinct(Partei, Bundesland, .keep_all=TRUE) %>% 
-  mutate(html = paste0(partei, hashtags3, "<br>")) %>% 
-  group_by(Bundesland) %>% 
-  mutate(html = paste0(html, collapse = "")) %>% 
-  distinct(Bundesland, html)
-  #mutate(hashtags3 = paste0(html,hashtags,"<br>", collapse = ", "))
-
-# Load map data from GADM
-de_map <- 
-  getData("GADM", country="Germany", level=1, path='./data/mapfiles') %>% 
-  st_as_sf() %>% 
-  left_join(mapData, by = c("NAME_1" = "Bundesland")) %>% 
-  left_join(hashtagHTML, by = c("NAME_1" = "Bundesland"))
-  # dplyr::select() - waiting for dataframe
-
-
 cuts <- c(0, 20000, 40000, 60000, 80000, 100000, 120000, 140000, 160000, 180000)
 pal <- colorBin("PuBu", domain = de_map$no_tweets, bins = cuts) 
 
-# Hard coded Version                
+# Beschreibungstext beim Klicken auf das Bundesland
 popup <- paste("<strong>Anzahl der Tweets in </strong>", 
                 "<strong>", de_map$NAME_1, ": </strong>", "<br>", de_map$no_tweets,
                 "<br>", "<br>",
                 "<b> Top 3 Hashtags pro Partei: </b>", "<br>",
                 de_map$html)
 
-mapTest <- 
+map <- 
   leaflet(data = de_map) %>% 
     addProviderTiles(providers$CartoDB.Voyager) %>% 
   setView(lng = 10.4507147, lat = 50.9833118, zoom = 5) %>% 
@@ -319,88 +367,7 @@ mapTest <-
             values = de_map$no_tweets, 	
             title = "Anzahl der Tweets", 
             opacity = 1)
-mapTest
-```
-
-## Pie Chart
-```{r}
-missingTwitterUsers = tibble(User = scrapedTweetsPerUser) %>% 
-  mutate(tweets = map_int(User, nrow)) %>% 
-  mutate(usernames = names(scrapedTweetsPerUser)) %>% 
-  dplyr::select(-User) %>% 
-  mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Twitter Daten vorhanden"))
-
-# ggplot version
-ggplot(missingTwitterUsers, aes(x="", y=missing, fill=missing)) +
-  geom_bar(stat="identity", width=1) +
-  coord_polar("y", start=0)
-
-# plotly version
-pieColors <- c("#000000", "#ffffff")
-
-plot_ly(
-  missingTwitterUsers, 
-  labels = ~missing, 
-  type = "pie",
-  textinfo = "percentage",
-  textposition = "inside",
-  marker = list(colors = ~pieColors)
-  ) %>% 
-  layout(title = "Anteil von vorhandenen Twitter Daten")
-```
-
-
-```{r}
-# to do: count is one, change color, add text and fix legend
-stackedBarData = mainData %>% 
-  left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
-  filter(Kategorie != "EU-Parlament") %>% 
-  mutate(missing = replace_na(missing, "Kein Account")) %>% 
-  dplyr::select(Name, Partei, missing) %>%
-  mutate(Partei, Partei = case_when(
-    Partei == "CSU"~"CDU/CSU",
-    Partei == "CDU"~"CDU/CSU",
-    Partei == "FDP/DVP"~"FDP",
-    Partei == "FW"~"Andere",
-    Partei == "fraktionslos"~"Andere",
-    Partei == "SSW"~"Andere",
-    Partei == "BIW"~"Andere",
-    Partei == "BVB/FW"~"Andere",
-    TRUE ~ Partei
-  )) %>% 
-  group_by(Partei) %>%
-  dplyr::mutate(
-    count = 1
-  )
-
-options(scipen = 999)
-
-stackedBar <- 
-  ggplot(stackedBarData, aes(fill=missing, y=count, x=Partei)) +
-  geom_bar(position="stack", 
-           stat="identity") +
-  scale_fill_manual("", values = c("#ece7f2", "#a6bddb", "#2b8cbe")) +
-  ggtitle("Verteilung von Twitter Konten pro Partei") + 
-  ylab("Anzahl der Konten") +
-  xlab("") + 
-  theme(panel.background = element_blank())
-
-ggplotly(stackedBar) %>% 
-  layout(legend = list(orientation = "h",
-                   y = -0.1, x = 0.5))
-
-plot_ly(stackedBarData, 
-        x = ~Partei, 
-        y = ~count,
-        hovertemplate = "my value: %{y}",
-        type = "bar", 
-        name = ~missing, 
-        color = ~missing
-        ) %>% 
-  layout(yaxis = list(title = "count"), 
-         barmode = "stack",
-         title = "Verteilung von Twitter Konten pro Partei")
-  
+map
 ```
 
 
