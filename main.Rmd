@@ -46,7 +46,7 @@ token <- create_token(
 
 # Daten:
 ## Parlamentarier
-```{r, include=FALSE}
+```{r}
 urlfile = "https://raw.githubusercontent.com/Leibniz-HBI/DBoeS-Automatization/master/db/reviewed/Parlamentarier.csv"
 mainData <- read_csv("data/ParlamentarierBackup.csv")
 # Try to overwrite up latest data
@@ -87,8 +87,9 @@ mainData = mainData %>%
 # Backup
 write_csv(mainData, "data/ParlamentarierBackup.csv")
 ```
+
 ## Tweets 
-```{r, include=FALSE}
+```{r}
 # Relevant parliamentarians for Twitter scraping
 twitterUser = mainData %>% 
   filter(Kategorie != "EU-Parlament") %>% # Switch between EU only and non EU by changing the != to ==
@@ -136,9 +137,10 @@ if (file.exists(allTweetsRDS)){
   mutate(missing = ifelse(tweets == 0, "Fehlende Twitter Daten", "Tiwtter Daten vorhanden"))
 twitterUser = subset(twitterUser, !(SM_Twitter_user %in% missingTwitterUsers$usernames))'
 ```
+
 ## Datenmodelierung
 ### Datenmodelierung gescrapten Liste der Twitter Daten (allgeimein und für das Kuchendiagramm)
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 # Umwandeln der gescrapten Liste in ein Dataframe und Verbinden mit dem Parlamentarier Dataframe
 allScrapedTweets = bind_rows(scrapedTweetsPerUser) %>% 
   mutate(screen_name = tolower(screen_name)) %>% 
@@ -155,7 +157,7 @@ rm(scrapedTweetsPerUser)
 ```
 
 ### Datenmodellierung für das gestapelte Balkendiagramm
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 stackedBarData = mainData %>% 
   left_join(missingTwitterUsers, by = c("SM_Twitter_user" = "usernames" )) %>% 
   mutate(missing = replace_na(missing, "Kein Account")) %>% 
@@ -165,13 +167,13 @@ stackedBarData = mainData %>%
 ```
 
 ### Datenmodellierung für den Zeitstrahl
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 tweetTimelineData = allScrapedTweets %>% 
   filter(created_at.x > as.POSIXct("2021-01-01"))
 ```
 
 ### Datenmodellierung für die Wordcloud (bei der Karte wiederverwendet)
-```{r} 
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'} 
 topHashtags = allScrapedTweets %>% 
   unnest(hashtags) %>% 
   mutate(hashtags = tolower(hashtags)) %>% 
@@ -187,7 +189,7 @@ topHashtagsLimit = topHashtags %>%
 ```
 
 ### Daten für die Karte
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 mapData = allScrapedTweets %>% 
   group_by(Bundesland) %>%
   dplyr::mutate(
@@ -224,7 +226,7 @@ de_map <-
 ```
 
 ## Löschen nicht benötigter Dataframes
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 rm(topHashtags, hashtagHTML, top3Hashtags,  mapData)
 ```
 
@@ -232,7 +234,7 @@ rm(topHashtags, hashtagHTML, top3Hashtags,  mapData)
 # Plots:
 
 ## Verhältnis zwischen gescrapet zu nicht scrapebaren Twitternutzern (Parlamentarier ohne angegebenen Twitter Account sind davon ausgeschlossen)
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 pieColors <- c("#FF7F0E", "#1F77B4")
 
 plot_ly(
@@ -247,7 +249,7 @@ plot_ly(
 ```
 
 ## Verhältnis ziwschen Parlamentarier jeder Partei mit vorhandenem Twitter Account, fehlendem Twitter Account und nicht scrapebaren Twitter Account pro Partei
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 options(scipen = 999)
 
 stackedBar <- 
@@ -308,7 +310,7 @@ ggplotly(timeline)
 ```
 
 ## Wordclound der meistgenutzten Tweets in Deutschland pro Partei
-```{r, warning=FALSE}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 ggplot(topHashtagsLimit, 
        aes(label = hashtags, 
            size = no_hashtags
@@ -317,12 +319,13 @@ ggplot(topHashtagsLimit,
   geom_text_wordcloud_area(area_corr = TRUE, shape = "square", rm_outside = T, area_corr_power = 1) +
   scale_size_area(max_size = 19) +
   theme_minimal() +
+  scale_color_gradient(low = "black", high = "lightblue") +
   labs(title = "Die meist verwendeten Hashtags der Parteien") +
   facet_wrap(~Partei)
 ```
 
 ## Deutschlandkarte der Twitternutzung pro Bundesland mit den drei meistgenutzten Hashtags pro Partei
-```{r}
+```{r, warning=FALSE, echo=FALSE, message=FALSE, results='hide'}
 # References:
 # https://cran.r-project.org/web/packages/leaflet.minicharts/vignettes/introduction.html
 # https://r-spatial.github.io/mapview/articles/articles/mapview_04-popups.html
