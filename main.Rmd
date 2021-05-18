@@ -341,7 +341,7 @@ timeline <- ggplot(tweetTimelineData)+
     subtitle = "Zeitverlauf 2021",
     x = "Zeit",
     y = "Anzahl Tweets",
-    color = "Retweet"
+    color = "Partei"
   )
 
 ggplotly(timeline, tooltip = '') %>% 
